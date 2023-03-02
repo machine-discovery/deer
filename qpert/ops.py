@@ -1,10 +1,13 @@
 from typing import Callable, Dict, List
 from abc import abstractmethod
-from qpert.terms import Term, SigmaTerm, JacobSigmaTerm, HermitSigmaTerm, solve_equations
+from qpert.terms import Term, SigmaTerm, JacobSigmaTerm, HermitSigmaTerm, MultiTerm
 from qpert.utils import Value
 
 
 class Evaluator:
+    def eval_multiterm(self, multiterm: MultiTerm, ysup: Dict[int, Value], ysub: Dict[int, Value]) -> Value:
+        return sum([self.eval(term, ysup, ysub) for term in multiterm.terms])
+
     def eval(self, term: Term, ysup: Dict[int, Value], ysub: Dict[int, Value]) -> Value:
         if isinstance(term, SigmaTerm):
             val0 = ysup[term.operand_idx]
@@ -38,78 +41,51 @@ class Evaluator:
 
 class SameSigmaEval(Evaluator):
     # evaluator where all the sigmas are the same and the hermitian is constant
+    # and the L0_inv_l1 are all the same
     def __init__(self, l0_inv_l1: Callable[[Value], Value],
             nonlin: Callable[[Value], Value],  # sigma(y)
             jacob_nonlin: Callable[[Value, Value], Value],  # sigma'(y0) y1
             hermit_nonlin: Callable[[Value, Value, Value], Value],  # sigma''(y0) y1 y2^T
+            *,
+            epsilon: float = 0.5,
+            epsilon_mode: int = 1,
             ) -> None:
         self.l0_inv_l1 = l0_inv_l1
         self.nonlin = nonlin
         self.jacob_nonlin = jacob_nonlin
         self.hermit_nonlin = hermit_nonlin
+        self.epsilon_mode = epsilon_mode
+
+        if self.epsilon_mode == 1:
+            self.mult = (1 - epsilon) / epsilon
+        elif self.epsilon_mode == 2:
+            self.mult = (1 - epsilon) ** 2 / epsilon
+        else:
+            raise ValueError(f"Invalid epsilon mode: {self.epsilon_mode}")
+
+    def eval_multiterm(self, multiterm: MultiTerm, ysup: Dict[int, Value], ysub: Dict[int, Value]) -> Value:
+        sum_all_sigmas = super().eval_multiterm(multiterm, ysup, ysub)
+        y = sum_all_sigmas * self.mult
+        y = self.l0_inv_l1(y)
+        return y
 
     def eval_sigma(self, term_idx: int, val0: Value) -> Value:
         # sigma(val0)
-        y0 = self.nonlin(val0)
-        y = self.l0_inv_l1(y0)
+        y = self.nonlin(val0)
+        if self.epsilon_mode == 2:
+            y = y * term_idx
         return y
 
     def eval_jacob_sigma(self, term_idx: int, val0: Value, val1: Value) -> Value:
         # sigma'(val0) val1
-        y0 = self.jacob_nonlin(val0, val1)
-        y = self.l0_inv_l1(y0)
+        y = self.jacob_nonlin(val0, val1)
+        if self.epsilon_mode == 2:
+            y = y * term_idx
         return y
 
     def eval_hermit_sigma(self, term_idx: int, val0: Value, val1: Value, val2: Value) -> Value:
         # sigma'' val1 val2^T
-        y0 = self.hermit_nonlin(val0, val1, val2)
-        y = self.l0_inv_l1(y0)
+        y = self.hermit_nonlin(val0, val1, val2)
+        if self.epsilon_mode == 2:
+            y = y * term_idx
         return y
-
-def eval_equation_one_nonlin(
-        max_order: int, rhs_val: Value, l0_inv: Callable[[Value], Value], l0_inv_l1: Callable[[Value], Value],
-        nonlin: Callable[[Value], Value],  # sigma(y)
-        jacob_nonlin: Callable[[Value, Value], Value],  # sigma'(y0) y1
-        hermit_nonlin: Callable[[Value, Value, Value], Value],  # sigma'' y1 y2^T
-        *, mode: int = 1, epsilon: float = 0.5) -> List[Value]:
-    # solving the equation of L0[y] + L1[sigma(y)] = f
-
-    prims_eqs = solve_equations(max_order, mode=mode)  # get all the equations
-    mult = (1 - epsilon) / epsilon
-    l0_inv_l1_2 = lambda x: l0_inv_l1(x) * mult
-    evaluator = SameSigmaEval(l0_inv_l1_2, nonlin, jacob_nonlin, hermit_nonlin)
-
-    # get the first solution
-    ysup = [l0_inv(rhs_val)]  # y^{(key)}
-    ysub = [ysup[0]]  # y_1
-    for i in range(len(prims_eqs)):
-        order = i + 1
-        _, multiterm = prims_eqs[i]
-        y_o = sum([evaluator.eval(term, ysup, ysub) for term in multiterm.terms])
-        assert len(ysub) == order
-        assert len(ysup) == order
-        ysub.append(y_o)
-        ysup.append(ysup[order - 1] + epsilon ** order * y_o)
-
-    return ysup
-
-if __name__ == "__main__":
-    a = 3.0
-    rhs = 1.0
-    # solve: a * y ^ 2 + y = rhs
-    vals = eval_equation_one_nonlin(
-        max_order=40,
-        rhs_val=rhs,
-        l0_inv=lambda x: x,
-        l0_inv_l1=lambda x: x,
-        nonlin=lambda x: a * x * x,
-        jacob_nonlin=lambda x, y: 2 * a * x * y,
-        hermit_nonlin=lambda x, y, z: 2 * a * y * z,
-        epsilon=0.9,
-        # mode=2
-    )
-    print(vals)
-    sol = (-1 + (1 + 4 * a * rhs) ** 0.5) / (2 * a)
-    print(sol)
-    print(sol ** 2 * a + sol)
-    print(vals[-1] ** 2 * a + vals[-1])

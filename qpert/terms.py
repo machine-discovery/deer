@@ -368,7 +368,7 @@ def coeff_negat(coeff1: float, coeff2: float) -> bool:
 
 if __name__ == "__main__":
     DEBUG = False
-    eqs = solve_equations(60, mode=1)
+    eqs = solve_equations(2, mode=1)
     print(eqs)
     print("")
     print(eqs[-1][1])
