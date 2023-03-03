@@ -20,31 +20,32 @@ def func_and_jac(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], yt:
     return fyt, jac_fyt
 
 def conv_gt(rhs: torch.Tensor, gt: torch.Tensor, y0: torch.Tensor, tpts: torch.Tensor) -> torch.Tensor:
-    # rhs: (..., nt, ny=1)
-    # gt: (..., nt, ny=1)
-    # y0: (..., 1, ny)
-    # tpts: (..., nt, 1)
-    # return: (..., nt, ny)
+    # solve dy/dt + g(t) y = rhs(t) with y(0) = y0
+    # rhs: (..., nt)
+    # gt: (..., nt)
+    # y0: (..., 1)
+    # tpts: (..., nt)
+    # return: (..., nt)
+
     # applying conv_gt(rhs) + conv_gt(y0 * delta(0))
-    assert rhs.shape[-1] == gt.shape[-1] == y0.shape[-1] == 1
-    dt = tpts[..., 1:, :] - tpts[..., :-1, :]  # (..., nt - 1, 1)
+    dt = tpts[..., 1:] - tpts[..., :-1]  # (..., nt - 1)
     half_dt = dt * 0.5
 
     # integrate gt with trapezoidal method
-    trapz_area = (gt[..., :-1, :] + gt[..., 1:, :]) * half_dt  # (..., nt - 1, ny)
-    zero_pad = torch.zeros((*gt.shape[:-2], 1, gt.shape[-1]), dtype=gt.dtype, device=gt.device)  # (..., 1, 1)
-    gt_int = torch.cumsum(trapz_area, dim=-2)
-    gt_int = torch.cat((zero_pad, gt_int), dim=-2)  # (..., nt, ny)
-    
+    trapz_area = (gt[..., :-1] + gt[..., 1:]) * half_dt  # (..., nt - 1)
+    zero_pad = torch.zeros((*gt.shape[:-1], 1), dtype=gt.dtype, device=gt.device)  # (..., 1)
+    gt_int = torch.cumsum(trapz_area, dim=-1)  # (..., nt - 1)
+    gt_int = torch.cat((zero_pad, gt_int), dim=-1)  # (..., nt)
+
     # compute log[integral_0^t rhs(tau) * exp(gt_int(tau)) dtau] with trapezoidal method
-    exp_content = torch.log(torch.complex(rhs, torch.zeros_like(rhs))) + gt_int  # (..., nt, ny)
-    exp_content2 = torch.stack((exp_content[..., :-1, :], exp_content[..., 1:, :]), dim=-1) + torch.log(half_dt)[..., None]  # (..., nt - 1, ny, 2)
-    trapz_area_gj = torch.logcumsumexp(exp_content2, dim=-1)[..., -1]  # (..., nt - 1, ny)
-    log_area_int = torch.logcumsumexp(trapz_area_gj, dim=-2)  # (..., nt - 1, ny)
-    log_conv = log_area_int - gt_int[..., 1:, :]  # (..., nt - 1, ny)
+    exp_content = torch.log(torch.complex(rhs, torch.zeros_like(rhs))) + gt_int  # (..., nt)
+    exp_content2 = torch.stack((exp_content[..., :-1], exp_content[..., 1:]), dim=-1) + torch.log(half_dt)[..., None]  # (..., nt - 1, 2)
+    trapz_area_gj = torch.logcumsumexp(exp_content2, dim=-1)[..., -1]  # (..., nt - 1)
+    log_area_int = torch.logcumsumexp(trapz_area_gj, dim=-1)  # (..., nt - 1)
+    log_conv = log_area_int - gt_int[..., 1:]  # (..., nt - 1)
     conv_res = torch.exp(log_conv).real
     # print(exp_content.shape, gt_int.shape, exp_content2.shape, trapz_area_gj.shape)
-    conv_res = torch.cat((zero_pad, conv_res), dim=-2)  # (..., nt, ny)
+    conv_res = torch.cat((zero_pad, conv_res), dim=-1)  # (..., nt)
 
     # results: exp(-gt_int(t)) * integral(t)
     # res = torch.exp(log_integral - gt_int)
@@ -71,13 +72,15 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
             gt = -jac_fyt[..., 0]
             gty = gt * yt  # (..., nt, ny)
         else:
-            assert False
-        
+            pass
+
         rhs = fyt + gty  # (..., nt, ny)
-        yt_new = conv_gt(rhs, gt, y0, tpts)
+        # rhs.T: (..., ny, nt), gt.T: (..., ny, nt), y0.T: (..., ny, 1), tpts.T: (..., 1, nt)
+        yt_new = conv_gt(rhs.transpose(-2, -1), gt.transpose(-2, -1), y0.transpose(-2, -1), tpts.transpose(-2, -1))
+        yt_new = yt_new.transpose(-2, -1)  # (..., nt, ny)
 
         diff = torch.mean(torch.abs(yt_new - yt))
-        print(diff)
+        print(f"Iter {i + 1}:", diff)
         yt = yt_new
         if diff < 1e-6:
             converge = True
