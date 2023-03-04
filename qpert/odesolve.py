@@ -61,6 +61,10 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     y0 = y0.unsqueeze(-2)  # (..., 1, ny)
     tpts = tpts.unsqueeze(-1)  # (..., nt, 1)
 
+    # define functions that will be frequently used
+    T = lambda x: x.transpose(-2, -1)
+    bmm = lambda x, y: (x @ y[..., None])[..., 0]
+
     # first guess: all zeros
     # yt0: (..., nt, ny)
     yt = torch.zeros((*y0.shape[:-2], tpts.shape[-2], y0.shape[-1]), dtype=y0.dtype, device=y0.device)
@@ -68,16 +72,31 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     for i in range(100):
         # fyt0: (..., nt, ny), jac_fyt0: (..., nt, ny, ny)
         fyt, jac_fyt = func_and_jac(func, yt, tpts)
-        if ny == 1:
+
+        if ny > 1:
+            # eival_g: (..., nt, ny), eivec_g: (..., nt, ny, ny)
+            eival_g, eivec_g = torch.linalg.eig(jac_fyt)
+
+            # compute the right hand side (the argument of the inverse linear operator)
+            # rhs: (..., nt, ny)
+            rhs = fyt - bmm(jac_fyt, yt)
+            wrhs = bmm(eivec_g, rhs)  # (..., nt, ny)
+
+            # compute the initial values
+            u0 = bmm(eivec_g, y0)  # (..., nt, ny)
+            
+            # compute the convolution
+            ut = T(conv_gt(T(wrhs), T(eival_g), T(u0), T(tpts)))  # (..., nt, ny)
+            yt_new = (torch.linalg.inv(eivec_g) @ ut[..., None])[..., 0]  # (..., nt, ny)
+
+        else:
             gt = -jac_fyt[..., 0]
             gty = gt * yt  # (..., nt, ny)
-        else:
-            pass
 
-        rhs = fyt + gty  # (..., nt, ny)
-        # rhs.T: (..., ny, nt), gt.T: (..., ny, nt), y0.T: (..., ny, 1), tpts.T: (..., 1, nt)
-        yt_new = conv_gt(rhs.transpose(-2, -1), gt.transpose(-2, -1), y0.transpose(-2, -1), tpts.transpose(-2, -1))
-        yt_new = yt_new.transpose(-2, -1)  # (..., nt, ny)
+            rhs = fyt + gty  # (..., nt, ny)
+            # rhs.T: (..., ny, nt), gt.T: (..., ny, nt), y0.T: (..., ny, 1), tpts.T: (..., 1, nt)
+            yt_new = conv_gt(rhs.transpose(-2, -1), gt.transpose(-2, -1), y0.transpose(-2, -1), tpts.transpose(-2, -1))
+            yt_new = yt_new.transpose(-2, -1)  # (..., nt, ny)
 
         diff = torch.mean(torch.abs(yt_new - yt))
         print(f"Iter {i + 1}:", diff)
