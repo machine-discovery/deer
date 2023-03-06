@@ -39,6 +39,7 @@ def conv_gt(rhs: torch.Tensor, gt: torch.Tensor, y0: torch.Tensor, tpts: torch.T
 
     # compute log[integral_0^t rhs(tau) * exp(gt_int(tau)) dtau] with trapezoidal method
     exp_content = torch.log(torch.complex(rhs, torch.zeros_like(rhs))) + gt_int  # (..., nt)
+    # TODO: change this to logaddexp
     exp_content2 = torch.stack((exp_content[..., :-1], exp_content[..., 1:]), dim=-1) + torch.log(half_dt)[..., None]  # (..., nt - 1, 2)
     trapz_area_gj = torch.logcumsumexp(exp_content2, dim=-1)[..., -1]  # (..., nt - 1)
     log_area_int = torch.logcumsumexp(trapz_area_gj, dim=-1)  # (..., nt - 1)
@@ -46,6 +47,9 @@ def conv_gt(rhs: torch.Tensor, gt: torch.Tensor, y0: torch.Tensor, tpts: torch.T
     conv_res = torch.exp(log_conv).real
     # print(exp_content.shape, gt_int.shape, exp_content2.shape, trapz_area_gj.shape)
     conv_res = torch.cat((zero_pad, conv_res), dim=-1)  # (..., nt)
+
+    # add the initial condition
+    conv_res = conv_res + y0 * torch.exp(-gt_int)
 
     # results: exp(-gt_int(t)) * integral(t)
     # res = torch.exp(log_integral - gt_int)
@@ -64,6 +68,7 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     # define functions that will be frequently used
     T = lambda x: x.transpose(-2, -1)
     bmm = lambda x, y: (x @ y[..., None])[..., 0]
+    solve = lambda x, y: torch.linalg.solve(x, y[..., None])[..., 0]
 
     # first guess: all zeros
     # yt0: (..., nt, ny)
@@ -74,20 +79,22 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
         fyt, jac_fyt = func_and_jac(func, yt, tpts)
 
         if ny > 1:
+            # add random noise to increase the chance of diagonalizability
+            jac_fyt2 = jac_fyt + torch.randn_like(jac_fyt) * 1e-8
             # eival_g: (..., nt, ny), eivec_g: (..., nt, ny, ny)
-            eival_g, eivec_g = torch.linalg.eig(jac_fyt)
+            eival_g, eivec_g = torch.linalg.eig(jac_fyt2)
 
             # compute the right hand side (the argument of the inverse linear operator)
             # rhs: (..., nt, ny)
             rhs = fyt - bmm(jac_fyt, yt)
-            wrhs = bmm(eivec_g, rhs)  # (..., nt, ny)
+            wrhs = solve(eivec_g, rhs)  # (..., nt, ny)
 
             # compute the initial values
-            u0 = bmm(eivec_g, y0)  # (..., nt, ny)
+            u0 = solve(eivec_g, y0)  # (..., nt, ny)
             
             # compute the convolution
             ut = T(conv_gt(T(wrhs), T(eival_g), T(u0), T(tpts)))  # (..., nt, ny)
-            yt_new = (torch.linalg.inv(eivec_g) @ ut[..., None])[..., 0]  # (..., nt, ny)
+            yt_new = bmm(eivec_g, ut)  # (..., nt, ny)
 
         else:
             gt = -jac_fyt[..., 0]
