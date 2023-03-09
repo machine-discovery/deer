@@ -61,7 +61,6 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     # tpts: (..., nt)
     # returns: (..., nt, ny)
     ny = y0.shape[-1]
-    assert ny == 1, "Only y with 1 channel is supported now"
     y0 = y0.unsqueeze(-2)  # (..., 1, ny)
     tpts = tpts.unsqueeze(-1)  # (..., nt, 1)
 
@@ -117,12 +116,14 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     return yt
 
 if __name__ == "__main__":
+    torch.manual_seed(123)
     dtype = torch.float64
     device = torch.device('cuda')
     module = bb.nn.MLP(1, 1).to(dtype).to(device)
     def func(y, t):
         # (..., ny), (..., 1) -> (..., ny)
-        return -module(y) * 60 * y - 10 * y ** 3 + torch.sin(600 * t)
+        dfdy = -module(y) * 60 * y - 10 * y ** 3 + torch.sin(600 * t)
+        return dfdy
 
     def fun(t, y):
         y = torch.as_tensor(y)

@@ -1,4 +1,4 @@
-from typing import Dict, Any, Callable
+from typing import Dict, Any
 from abc import abstractmethod
 import torch
 import functorch
