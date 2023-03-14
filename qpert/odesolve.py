@@ -116,13 +116,13 @@ def solve_ivp(func: Callable[[torch.Tensor, torch.Tensor], torch.Tensor], y0: to
     return yt
 
 if __name__ == "__main__":
-    torch.manual_seed(123)
+    torch.manual_seed(124)
     dtype = torch.float64
-    device = torch.device('cuda')
+    device = torch.device('cpu')
     module = bb.nn.MLP(1, 1).to(dtype).to(device)
     def func(y, t):
         # (..., ny), (..., 1) -> (..., ny)
-        dfdy = -module(y) * 60 * y - 10 * y ** 3 + torch.sin(600 * t)
+        dfdy = -module(y) * 6 * y - 10 * y ** 3 + torch.sin(600 * t)
         return dfdy
 
     def fun(t, y):

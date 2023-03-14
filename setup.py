@@ -15,8 +15,8 @@ with open(verfile, "r") as fp:
 setup(
     name=module_name,
     version=version["get_version"](),
-    description='Supervised learning DENSE framework',
-    url='https://github.com/machine-discovery/sldense/',
+    description='Differential equation solvers',
+    url='https://github.com/mfkasim1/qpert/',
     author='mfkasim1',
     author_email='firman.kasim@gmail.com',
     license='Commercial',
@@ -37,9 +37,9 @@ setup(
         "Topic :: Scientific/Engineering :: Mathematics",
         "License :: OSI Approved :: MIT License",
 
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
     ],
     keywords="project deep-learning",
     zip_safe=False
