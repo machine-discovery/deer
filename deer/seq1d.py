@@ -1,7 +1,7 @@
 from typing import Callable, Tuple, Optional, Union, Any
 import jax
 import jax.numpy as jnp
-from deer.deer_iter import deer_iteration, matmul_recursive
+from deer.deer_iter import deer_iteration
 
 # 1D sequence: RNN or ODE
 
@@ -90,3 +90,38 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, y0: jnp.ndarray, rhs: jnp.ndarray, tpts
     # compute the recursive matrix multiplication
     yt = matmul_recursive(gtbar, htbar, y0[0])  # (nt - 1, ny)
     return yt
+
+def binary_operator(element_i: Tuple[jnp.ndarray, jnp.ndarray],
+                    element_j: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    # associative operator for the scan
+    gti, hti = element_i
+    gtj, htj = element_j
+    return gtj @ gti, jnp.einsum("...ij,...j->...i", gtj, hti) + htj
+
+def matmul_recursive(mats: jnp.ndarray, vecs: jnp.ndarray, y0: jnp.ndarray) -> jnp.ndarray:
+    """
+    Perform the matrix multiplication recursively, y[i + 1] = mats[i] @ y[i] + vec[i].
+
+    Arguments
+    ---------
+    mats: jnp.ndarray
+        The matrices to be multiplied, shape (nsamples - 1, ny, ny)
+    vecs: jnp.ndarray
+        The vector to be multiplied, shape (nsamples - 1, ny)
+    y0: jnp.ndarray
+        The initial condition, shape (ny,)
+
+    Returns
+    -------
+    result: jnp.ndarray
+        The result of the matrix multiplication, shape (nsamples, ny)
+    """
+    # shift the elements by one index
+    eye = jnp.eye(mats.shape[-1], dtype=mats.dtype)[None]  # (1, ny, ny)
+    first_elem = jnp.concatenate((eye, mats), axis=0)  # (nsamples, ny, ny)
+    second_elem = jnp.concatenate((y0[None], vecs), axis=0)  # (nsamples, ny)
+
+    # perform the scan
+    elems = (first_elem, second_elem)
+    _, yt = jax.lax.associative_scan(binary_operator, elems)
+    return yt  # (nsamples, ny)

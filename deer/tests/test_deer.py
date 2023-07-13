@@ -1,9 +1,9 @@
 import jax
+import jax.test_util
 import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
-from deer.deer_iter import matmul_recursive
-from deer.seq1d import solve_ivp
+from deer.seq1d import solve_ivp, matmul_recursive
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -33,12 +33,12 @@ def test_solve_ivp():
     ny = 4
     dtype = jnp.float64
     key = jax.random.PRNGKey(0)
-    key, subkey = jax.random.split(key, 2)
-    A0 = (jax.random.uniform(key, shape=(ny, ny), dtype=dtype) * 2 - 1) / ny ** 0.5
-    A1 = jax.random.uniform(key, shape=(ny, ny), dtype=dtype) / ny ** 0.5
-    npts = 10000  # TODO: inspect why npts=1000 fails
+    subkey1, subkey2, subkey3 = jax.random.split(key, 3)
+    A0 = (jax.random.uniform(subkey1, shape=(ny, ny), dtype=dtype) * 2 - 1) / ny ** 0.5
+    A1 = jax.random.uniform(subkey2, shape=(ny, ny), dtype=dtype) / ny ** 0.5
+    npts = 10000  # TODO: investigate why npts=1000 make nans
     tpts = jnp.linspace(0, 1.0, npts, dtype=dtype)  # (ntpts,)
-    y0 = jnp.zeros((ny,), dtype=dtype)
+    y0 = jax.random.uniform(subkey3, shape=(ny,), dtype=dtype)
 
     A0_np = np.array(A0)
     A1_np = np.array(A1)
@@ -64,4 +64,20 @@ def test_solve_ivp():
     yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
     yt_np = solve_ivp_scipy(func_np, (tpts_np[0], tpts_np[-1]), y0_np, t_eval=tpts_np, args=params_np, rtol=1e-10, atol=1e-10).y.T
 
+    # import matplotlib.pyplot as plt
+    # plt.plot(tpts, yt[..., 0])
+    # plt.plot(tpts, yt_np[..., 0])
+    # # plt.plot(tpts, (yt - yt_np)[..., 0])
+    # plt.savefig("test.png")
+    # plt.close()
+
     assert jnp.allclose(yt, yt_np, atol=1e-6)
+
+    # check the gradients
+    def get_loss(y0, params):
+        yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
+        return jnp.sum(yt ** 2, axis=0)  # only sum over time
+    jax.test_util.check_grads(
+        get_loss, (y0, params), order=1, modes=['rev'],
+        # atol, rtol, eps following torch.autograd.gradcheck
+        atol=1e-5, rtol=1e-3, eps=1e-6)
