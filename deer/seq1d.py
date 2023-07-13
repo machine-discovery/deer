@@ -42,17 +42,15 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     if yinit_guess is None:
         yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)
 
-    # make sure the shapes are correct
-    tpts = tpts[..., None]  # (nsamples, 1)
-    y0 = y0[None, ...]  # (1, ny)
-
     # perform the deer iteration
+    inv_lin_params = (tpts, y0)
     yt = deer_iteration(
-        inv_lin=solve_ivp_inv_lin, func=func, params=params, xinput=xinp, rsample_pts=tpts, ybound=y0,
+        inv_lin=solve_ivp_inv_lin, func=func, params=params, xinput=xinp, inv_lin_params=inv_lin_params,
         yinit_guess=yinit_guess, max_iter=max_iter)
     return yt
 
-def solve_ivp_inv_lin(gmat: jnp.ndarray, y0: jnp.ndarray, rhs: jnp.ndarray, tpts: jnp.ndarray) -> jnp.ndarray:
+def solve_ivp_inv_lin(gmat: jnp.ndarray, rhs: jnp.ndarray,
+                      inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
     """
     Inverse of the linear operator for solving the initial value problem.
     dy/dt + G(t) y = rhs(t), y(0) = y0.
@@ -61,24 +59,27 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, y0: jnp.ndarray, rhs: jnp.ndarray, tpts
     ---------
     gmat: jnp.ndarray
         The G-matrix of shape (nsamples, ny, ny).
-    y0: jnp.ndarray
-        The boundary condition of shape (1, ny).
     rhs: jnp.ndarray
         The right hand side of the equation of shape (nsamples, ny).
-    tpts: jnp.ndarray
-        The time points to evaluate the solution (nsamples, 1).
+    inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]
+        The parameters of the linear operator.
+        The first element is the time points (nsamples,),
+        and the second element is the initial condition (ny,).
 
     Returns
     -------
     y: jnp.ndarray
         The solution of the linear equation of shape (nsamples, ny).
     """
+    # extract the parameters
+    tpts, y0 = inv_lin_params
+
     eye = jnp.eye(gmat.shape[-1], dtype=gmat.dtype)  # (ny, ny)
 
     # taking the mid-point of gmat and rhs
-    half_dt = 0.5 * (tpts[1:] - tpts[:-1])  # (nsamples - 1, 1)
-    gtmid_dt = (gmat[1:] + gmat[:-1]) * half_dt[..., None]  # (nsamples - 1, ny, ny)
-    htmid_dt = (rhs[1:] + rhs[:-1]) * half_dt  # (nsamples - 1, ny)
+    half_dt = 0.5 * (tpts[1:] - tpts[:-1])  # (nsamples - 1,)
+    gtmid_dt = (gmat[1:] + gmat[:-1]) * half_dt[..., None, None]  # (nsamples - 1, ny, ny)
+    htmid_dt = (rhs[1:] + rhs[:-1]) * half_dt[..., None]  # (nsamples - 1, ny)
 
     # get the matrices and vectors to be convolved
     gtmid_dt2 = gtmid_dt @ gtmid_dt  # (nt - 1, ny, ny)
@@ -88,7 +89,7 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, y0: jnp.ndarray, rhs: jnp.ndarray, tpts
     htbar = jnp.einsum("...ij,...j->...i", htbar_helper, htmid_dt)
 
     # compute the recursive matrix multiplication
-    yt = matmul_recursive(gtbar, htbar, y0[0])  # (nt - 1, ny)
+    yt = matmul_recursive(gtbar, htbar, y0)  # (nt - 1, ny)
     return yt
 
 def binary_operator(element_i: Tuple[jnp.ndarray, jnp.ndarray],
