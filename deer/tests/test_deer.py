@@ -84,6 +84,7 @@ def test_solve_ivp():
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
 def test_rnn():
+    # test the rnn with the DEER framework using GRU
     def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
         # xinp: (nx,)
@@ -138,3 +139,36 @@ def test_rnn():
 
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
+
+def test_rnn_derivs():
+    # test the rnn with the DEER framework using simple RNN function
+    def rnn_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
+        # hprev: (nh,)
+        # xinp: (nx,)
+        # params: Wh (nh, nh), Wx (nh, nx)
+        # returns: (nh,)
+        Wh, Wx = params
+        return jnp.tanh(Wx @ xinp + Wh @ hprev)
+
+    nsteps = 5
+    dtype = jnp.float64
+    key = jax.random.PRNGKey(0)
+    nh, nx = 3, 2
+    # generate the matrices Wh and Wx
+    subkey1, subkey2, key = jax.random.split(key, 3)
+    Wh = (jax.random.uniform(subkey1, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    Wx = (jax.random.uniform(subkey2, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
+    # generate the inputs (nsteps, nx) and the initial condition (nh,)
+    subkey1, subkey2, key = jax.random.split(key, 3)
+    xinp = jax.random.normal(subkey1, shape=(nsteps, nx), dtype=dtype)
+    h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
+    params = (Wh, Wx)
+
+    def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
+        hseq = seq1d(rnn_func, h0, xinp, params)  # (nsteps, nh)
+        return hseq
+
+    jax.test_util.check_grads(
+        get_loss, (h0, xinp, params), order=1, modes=['rev'],
+        # atol, rtol, eps following torch.autograd.gradcheck
+        atol=1e-5, rtol=1e-3, eps=1e-6)

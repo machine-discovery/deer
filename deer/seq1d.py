@@ -84,7 +84,8 @@ def seq1d(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     Returns
     -------
     y: jnp.ndarray
-        The output signal as the solution of the discrete difference equation (nsamples, ny).
+        The output signal as the solution of the discrete difference equation (nsamples, ny),
+        excluding the initial states.
     """
     # set the default initial guess
     if yinit_guess is None:
