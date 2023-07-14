@@ -1,9 +1,10 @@
+from typing import Any
 import jax
 import jax.test_util
 import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
-from deer.seq1d import solve_ivp, matmul_recursive
+from deer.seq1d import solve_ivp, seq1d, matmul_recursive
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -81,3 +82,59 @@ def test_solve_ivp():
         get_loss, (y0, params), order=1, modes=['rev'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
+
+def test_rnn():
+    def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
+        # hprev: (nh,)
+        # xinp: (nx,)
+        # params: Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn
+        # returns: (nh,)
+        Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn = params
+        r = jax.nn.sigmoid(Wir @ xinp + Whr @ hprev + bhr)  # (nh,)
+        z = jax.nn.sigmoid(Wiz @ xinp + Whz @ hprev + bhz)  # (nh,)
+        n = jnp.tanh(Win @ xinp + r * (Whn @ hprev + bhn))  # (nh,)
+        h = (1 - z) * n + z * hprev
+        return h
+
+    # generate random parameters
+    dtype = jnp.float64
+    key = jax.random.PRNGKey(0)
+    nh, nx = 5, 3
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    Wir = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
+    Whr = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    bhr = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    Wiz = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
+    Whz = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    bhz = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    Win = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
+    Whn = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    bhn = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    params = (Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn)
+
+    # generate random inputs and the initial condition
+    nsteps = 100
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    xinp = jax.random.normal(subkey1, shape=(nsteps, nx), dtype=dtype)
+    h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
+
+    # calculate the output states using seq1d
+    hseq = seq1d(gru_func, h0, xinp, params)  # (nsteps, nh)
+
+    # calculate the output states using a for loop
+    hfor_list = [h0]
+    for i in range(xinp.shape[0]):
+        hfor = gru_func(hfor_list[-1], xinp[i], params)
+        hfor_list.append(hfor)
+    hfor = jnp.stack(hfor_list[1:], axis=0)  # (nsteps, nh)
+
+    # import matplotlib.pyplot as plt
+    # print(hfor.shape, hseq.shape)
+    # plt.plot(hseq[:, 0])
+    # plt.plot(hfor[:, 0])
+    # plt.savefig("test.png")
+
+    # check the outputs
+    assert jnp.allclose(hseq, hfor, atol=1e-6)

@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Optional, Union, Any
+from typing import Callable, Tuple, Optional, Union, Any, List
 import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
@@ -41,15 +41,74 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     # set the default initial guess
     if yinit_guess is None:
         yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)
+    
+    def func2(ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
+        return func(ylist[0], x, params)
+    
+    def shifter_func(y: jnp.ndarray, params: Any) -> List[jnp.ndarray]:
+        # y: (nsamples, ny)
+        return [y]
 
     # perform the deer iteration
     inv_lin_params = (tpts, y0)
     yt = deer_iteration(
-        inv_lin=solve_ivp_inv_lin, func=func, params=params, xinput=xinp, inv_lin_params=inv_lin_params,
+        inv_lin=solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
+        inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=max_iter)
+    return yt
+
+def seq1d(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+          y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
+          yinit_guess: Optional[jnp.ndarray] = None,
+          max_iter: int = 100) -> jnp.ndarray:
+    """
+    Solve the discrete sequential equation, y[i + 1] = func(y[i], x[i], params) with the DEER framework.
+
+    Arguments
+    ---------
+    func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray]
+        Function to evaluate the next output signal y[i + 1] from the current output signal y[i].
+        The arguments are: output signal y (ny,), input signal x (nx,), and parameters.
+        The return value is the next output signal y[i + 1] (ny,).
+    y0: jnp.ndarray
+        Initial condition on y (ny,).
+    xinp: jnp.ndarray
+        The external input signal of shape (nsamples, nx)
+    params: Any
+        The parameters of the function ``func``.
+    yinit_guess: jnp.ndarray or None
+        The initial guess of the output signal (nsamples, ny).
+        If None, it will be initialized as 0s.
+    max_iter: int
+        The maximum number of iterations to perform.
+
+    Returns
+    -------
+    y: jnp.ndarray
+        The output signal as the solution of the discrete difference equation (nsamples, ny).
+    """
+    # set the default initial guess
+    if yinit_guess is None:
+        yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)  # (nsamples, ny)
+
+    def func2(ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
+        # ylist: (ny,)
+        return func(ylist[0], x, params)
+
+    def shifter_func(y: jnp.ndarray, shifter_params: Any) -> List[jnp.ndarray]:
+        # y: (nsamples, ny)
+        # shifter_params = (y0,)
+        y0, = shifter_params
+        y = jnp.concatenate((y0[None, :], y[:-1, :]), axis=0)  # (nsamples, ny)
+        return [y]
+
+    # perform the deer iteration
+    yt = deer_iteration(
+        inv_lin=seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
+        inv_lin_params=(y0,), shifter_func_params=(y0,),
         yinit_guess=yinit_guess, max_iter=max_iter)
     return yt
 
-def solve_ivp_inv_lin(gmat: jnp.ndarray, rhs: jnp.ndarray,
+def solve_ivp_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                       inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
     """
     Inverse of the linear operator for solving the initial value problem.
@@ -57,8 +116,8 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, rhs: jnp.ndarray,
 
     Arguments
     ---------
-    gmat: jnp.ndarray
-        The G-matrix of shape (nsamples, ny, ny).
+    gmat: list of jnp.ndarray
+        The list of 1 G-matrix of shape (nsamples, ny, ny).
     rhs: jnp.ndarray
         The right hand side of the equation of shape (nsamples, ny).
     inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]
@@ -73,6 +132,7 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, rhs: jnp.ndarray,
     """
     # extract the parameters
     tpts, y0 = inv_lin_params
+    gmat = gmat[0]  # (nsamples, ny, ny)
 
     eye = jnp.eye(gmat.shape[-1], dtype=gmat.dtype)  # (ny, ny)
 
@@ -90,6 +150,35 @@ def solve_ivp_inv_lin(gmat: jnp.ndarray, rhs: jnp.ndarray,
 
     # compute the recursive matrix multiplication
     yt = matmul_recursive(gtbar, htbar, y0)  # (nt - 1, ny)
+    return yt
+
+def seq1d_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
+                  inv_lin_params: Tuple[jnp.ndarray]) -> jnp.ndarray:
+    """
+    Inverse of the linear operator for solving the discrete sequential equation.
+    y[i + 1] + G[i] y[i] = rhs[i], y[0] = y0.
+
+    Arguments
+    ---------
+    gmat: jnp.ndarray
+        The list of 1 G-matrix of shape (nsamples, ny, ny).
+    rhs: jnp.ndarray
+        The right hand side of the equation of shape (nsamples, ny).
+    inv_lin_params: Tuple[jnp.ndarray]
+        The parameters of the linear operator.
+        The first element is the initial condition (ny,).
+
+    Returns
+    -------
+    y: jnp.ndarray
+        The solution of the linear equation of shape (nsamples, ny).
+    """
+    # extract the parameters
+    y0, = inv_lin_params
+    gmat = gmat[0]
+
+    # compute the recursive matrix multiplication and drop the first element
+    yt = matmul_recursive(-gmat, rhs, y0)[1:]  # (nsamples, ny)
     return yt
 
 def binary_operator(element_i: Tuple[jnp.ndarray, jnp.ndarray],
