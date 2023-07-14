@@ -92,7 +92,7 @@ def deer_iteration_helper(
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
-        print(err)
+        # print(err)
         return err, yt_next, gts
 
     # iter_inp: (err, yt, gts)
