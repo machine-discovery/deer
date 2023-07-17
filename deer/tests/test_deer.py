@@ -1,4 +1,5 @@
 from typing import Any
+import pytest
 import jax
 import jax.test_util
 import jax.numpy as jnp
@@ -83,7 +84,8 @@ def test_solve_ivp():
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-def test_rnn():
+@pytest.mark.parametrize("jit", [True, False])
+def test_rnn(jit: bool):
     # test the rnn with the DEER framework using GRU
     def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -122,7 +124,11 @@ def test_rnn():
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    hseq = seq1d(gru_func, h0, xinp, params)  # (nsteps, nh)
+    if jit:
+        func = jax.jit(seq1d, static_argnums=(0,))
+    else:
+        func = seq1d
+    hseq = func(gru_func, h0, xinp, params)  # (nsteps, nh)
 
     # calculate the output states using a for loop
     hfor_list = [h0]

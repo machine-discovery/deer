@@ -3,7 +3,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 8, 9))
+@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
@@ -13,7 +13,7 @@ def deer_iteration(
         xinput: jnp.ndarray,  # gradable
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
-        yinit_guess: jnp.ndarray,
+        yinit_guess: jnp.ndarray,  # gradable as 0
         max_iter: int = 100,
         ) -> jnp.ndarray:
     """
@@ -53,6 +53,8 @@ def deer_iteration(
     y: jnp.ndarray
         The output signal as the solution of the non-linear differential equations (nsamples, ny).
     """
+    # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
+    # which is less efficient than lax.cond
     return deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
@@ -81,8 +83,14 @@ def deer_iteration_helper(
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
     func2 = jax.vmap(func, in_axes=(0, 0, None))
 
-    def iter_func(err: jnp.ndarray, yt: jnp.ndarray, gt_: List[jnp.ndarray]) \
-            -> Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray]]:
+    dtype = jnp.result_type(xinput, yinit_guess)
+    # set the tolerance to be 1e-4 if dtype is float32, else 1e-7 for float64
+    tol = 1e-7 if dtype == jnp.float64 else 1e-4
+
+    # def iter_func(err, yt, gt_, iiter):
+    def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \
+            -> Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]:
+        err, yt, gt_, iiter = iter_inp
         # gt_ is not used, but it is needed to return at the end of scan iteration
         # yt: (nsamples, ny)
         ytparams = shifter_func(yt, shifter_func_params)
@@ -92,17 +100,23 @@ def deer_iteration_helper(
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
-        # print(err)
-        return err, yt_next, gts
+        # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=err)
+        return err, yt_next, gts, iiter + 1
 
-    # iter_inp: (err, yt, gts)
+    def cond_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) -> bool:
+        err, _, _, iiter = iter_inp
+        return jnp.logical_and(err > tol, iiter < max_iter)
+
+    # iter_inp: (err, yt, gts, iiter)
     def scan_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray]], _):
-        return jax.lax.cond(iter_inp[0] > 1e-7, iter_func, lambda *iter_inp: iter_inp, *iter_inp), None
+        return jax.lax.cond(iter_inp[0] > tol, iter_func, lambda *iter_inp: iter_inp, *iter_inp), None
 
     err = jnp.array(1e10, dtype=xinput.dtype)  # initial error should be very high
     gt = jnp.zeros((xinput.shape[0], yinit_guess.shape[-1], yinit_guess.shape[-1]), dtype=xinput.dtype)
     gts = [gt] * p_num
-    (err, yt, gts), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts), None, length=max_iter)
+    iiter = jnp.array(0, dtype=jnp.int32)
+    err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
+    # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
     return yt, gts, func2
 
 def deer_iteration_eval(
@@ -114,7 +128,7 @@ def deer_iteration_eval(
         xinput: jnp.ndarray,  # gradable
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
-        yinit_guess: Optional[jnp.ndarray] = None,
+        yinit_guess: jnp.ndarray,  # gradable as 0
         max_iter: int = 100) -> jnp.ndarray:
     # compute the iteration
     yt, gts, func2 = deer_iteration_helper(
@@ -140,7 +154,6 @@ def deer_iteration_bwd(
         func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
         p_num: int,
-        yinit_guess: jnp.ndarray,
         max_iter: int,
         # the meaningful arguments
         resid: Any,
@@ -156,6 +169,7 @@ def deer_iteration_bwd(
     _, func_vjp = jax.vjp(func, ytparams, xinput, params)
     _, grad_xinput, grad_params = func_vjp(grad_rhs)
     # TODO: think about how to compute the gradient of the shifter_func_params?
-    return grad_params, grad_xinput, grad_inv_lin_params, None
+    grad_shifter_func_params = None
+    return grad_params, grad_xinput, grad_inv_lin_params, grad_shifter_func_params, None
 
 deer_iteration.defvjp(deer_iteration_eval, deer_iteration_bwd)
