@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Tuple
 import pytest
 import jax
 import jax.test_util
@@ -178,3 +178,41 @@ def test_rnn_derivs():
         get_loss, (h0, xinp, params), order=1, modes=['rev'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
+
+def test_input_in_a_tree():
+    # recurrence of z_i = sigma(b_i + z_{i-1} * w_i)
+
+    # generate random parameters
+    dtype = jnp.float64
+    key = jax.random.PRNGKey(0)
+    nh = 2
+    ndepths = 1000
+
+    # generate the random parameters
+    key, *subkey = jax.random.split(key, 4)
+    b = (jax.random.uniform(subkey[0], (ndepths, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    w = (jax.random.uniform(subkey[1], (ndepths, nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+
+    # initial values
+    z0 = jax.random.uniform(subkey[2], (nh,), dtype=dtype) * 2 - 1
+
+    def func_next_seq(zi: jnp.ndarray, xinp: Tuple[jnp.ndarray, jnp.ndarray], _: None) -> jnp.ndarray:
+        # zi: (nh,)
+        # xinp: (b_i, w_i): (nh,), (nh, nh)
+        # returns: (nh,)
+        bi, wi = xinp
+        return jax.nn.log_sigmoid(bi + jnp.dot(zi, wi))
+
+    xinps = (b, w)
+    zk = seq1d(func_next_seq, z0, xinps, None)  # (ndepths, nh)
+
+    # TODO: check the result
+    zk_trues = []
+    z = z0
+    for i in range(ndepths):
+        z = func_next_seq(z, (b[i], w[i]), None)  # (nh,)
+        zk_trues.append(z)
+    zk_true = jnp.stack(zk_trues, axis=0)  # (ndepths, nh)
+
+    # check the outputs
+    assert jnp.allclose(zk, zk_true, atol=1e-6)
