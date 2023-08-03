@@ -56,8 +56,8 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=max_iter)
     return yt
 
-def seq1d(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-          y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
+def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
+          y0: jnp.ndarray, xinp: Any, params: Any,
           yinit_guess: Optional[jnp.ndarray] = None,
           max_iter: int = 100) -> jnp.ndarray:
     """
@@ -65,14 +65,14 @@ def seq1d(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 
     Arguments
     ---------
-    func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray]
+    func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray]
         Function to evaluate the next output signal y[i + 1] from the current output signal y[i].
-        The arguments are: output signal y (ny,), input signal x (nx,), and parameters.
+        The arguments are: output signal y (ny,), input signal x (*nx,) in a pytree, and parameters.
         The return value is the next output signal y[i + 1] (ny,).
     y0: jnp.ndarray
         Initial condition on y (ny,).
-    xinp: jnp.ndarray
-        The external input signal of shape (nsamples, nx)
+    xinp: Any
+        The external input signal in a pytree of shape (nsamples, *nx)
     params: Any
         The parameters of the function ``func``.
     yinit_guess: jnp.ndarray or None
@@ -88,10 +88,11 @@ def seq1d(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         excluding the initial states.
     """
     # set the default initial guess
+    xinp_flat = jax.tree_util.tree_flatten(xinp)[0][0]
     if yinit_guess is None:
-        yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)  # (nsamples, ny)
+        yinit_guess = jnp.zeros((xinp_flat.shape[0], y0.shape[-1]), dtype=xinp_flat.dtype)  # (nsamples, ny)
 
-    def func2(ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
+    def func2(ylist: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
         # ylist: (ny,)
         return func(ylist[0], x, params)
 
