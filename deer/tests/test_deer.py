@@ -206,7 +206,7 @@ def test_input_in_a_tree():
     xinps = (b, w)
     zk = seq1d(func_next_seq, z0, xinps, None)  # (ndepths, nh)
 
-    # TODO: check the result
+    # compute the true values
     zk_trues = []
     z = z0
     for i in range(ndepths):
