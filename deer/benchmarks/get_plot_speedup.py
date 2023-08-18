@@ -3,10 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 speedups = np.full((6, 7, 5), np.nan)
+batch_size = 16
+fname = "fwd-speedup-report.txt"
 nhs = [1, 2, 4, 8, 16, 32]
 nsequences = [1000, 3000, 10000, 30000, 100000, 300000, 1000000]
 nsequences_labels = ["1k", "3k", "10k", "30k", "100k", "300k", "1M"]
-with open("fwd-speedup-report.txt", "r") as f:
+with open(fname, "r") as f:
     for line in f:
         if line.startswith("nh:"):
             nh, nsequence, seed = [int(c) for c in line.split()[1::2]]
@@ -28,7 +30,7 @@ plt.gca().hlines(1.0, -width, len(nsequences) - 1 + (len(nhs) - 1) * width, colo
 plt.xticks(np.arange(len(nsequences)) + ((len(nhs) - 1) / 2 * width), nsequences_labels, fontsize=12)
 plt.xlabel("Sequence length", fontsize=14)
 plt.ylabel("Speed up", fontsize=14)
-plt.title("Speed up of DEER GRU over sequential GRU with batch size = 16", fontsize=16)
+plt.title(f"Speed up of DEER GRU over sequential GRU with batch size = {batch_size}", fontsize=16)
 plt.gca().set_yscale("log")
 plt.grid()
 plt.yticks(fontsize=12)

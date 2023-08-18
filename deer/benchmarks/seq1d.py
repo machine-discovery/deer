@@ -89,8 +89,13 @@ def func_benchmark(
     # assert jnp.allclose(x1, x2), "outputs are not close"
 
 if __name__ == "__main__":
-    for (nh, nsequence) in itertools.product([1, 2, 4, 8, 16, 32], [1000, 3000, 10000, 30000, 100000, 300000, 1000000]):
+    # executed with "python seq1d.py > report.txt"
+    batch_size = 16
+    for (nh, nsequence) in itertools.product([1, 2, 4, 8, 16, 32, 64], [1000, 3000, 10000, 30000, 100000, 300000, 1000000]):
         for seed in range(5):
             print("nh:", nh, "nsequence:", nsequence, "seed:", seed)
-            benchmark_seq1d_gru(nh=nh, nsequence=nsequence, seed=seed)
+            try:
+                benchmark_seq1d_gru(nh=nh, nsequence=nsequence, seed=seed, batch_size=batch_size)
+            except:
+                print("Fail")
             print("--------")
