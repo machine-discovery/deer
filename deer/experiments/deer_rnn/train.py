@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List
 import os
 from functools import partial
 import argparse
@@ -16,23 +16,15 @@ import scipy.integrate
 from deer.seq1d import solve_ivp, seq1d
 from PIL import Image
 from dataloaders.lra_image import CIFAR10DataModule
+from dataloaders.lra_pathfinderx import PathfinderXDataModule
 import torch
 import pdb
-
+from utils import prep_batch, count_params, get_datamodule
+from models import StackedGRU, MLP
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
 # enable float 64
 jax.config.update('jax_enable_x64', True)
-
-
-class MLP(nn.Module):
-    ndim: int
-    dtype: Any
-
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Dense(self.ndim, dtype=self.dtype)(x)
-        return x
 
 
 @partial(jax.jit, static_argnames=("model", "mlp", "method"))
@@ -54,6 +46,7 @@ def rollout(
     # returns: (ntpts, nstates)
 
     def model_func(carry, inputs, params):
+        # return model.apply(params, carry, inputs)
         return model.apply(params, carry, inputs)[0]
     if method == "deer_rnn":
         y = seq1d(model_func, y0, inputs, params, yinit_guess)  # (nbatch, nseq, nstates)
@@ -67,6 +60,8 @@ def compute_metrics(
     labels: jnp.ndarray
 ) -> Dict[str, jnp.ndarray]:
     loss = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits, labels))
+    # print_argmax = jax.tree_map(print, jnp.argmax(logits, -1))
+    # jax.debug.print("{classes} {labels}", classes=jnp.argmax(logits, -1), labels=labels)
     accuracy = jnp.mean(jnp.argmax(logits, -1) == labels)
     metrics = {
         'loss': loss,
@@ -127,19 +122,10 @@ def update_step(
         argnums=(1, 3),
         has_aux=True
     )(model, combined_params["params"], mlp, combined_params["mlp_params"], y0, batch, all_yinit_guess, method)
+    # jax.debug.print("{params} {mlp_params}", params=grad[0], mlp_params=grad[1])
     updates, opt_state = optimizer.update({"params": grad[0], "mlp_params": grad[1]}, opt_state)
     combined_params = optax.apply_updates(combined_params, updates)
     return combined_params, opt_state, loss, accuracy, yinit_guess
-
-
-def prep_batch(
-    batch: Tuple[torch.Tensor, torch.Tensor]
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
-    assert len(batch) == 2
-    x, y = batch
-    x = jnp.asarray(x.numpy())
-    y = jnp.asarray(y.numpy())
-    return x, y
 
 
 def main():
@@ -150,17 +136,32 @@ def main():
     parser.add_argument("--nepochs", type=int, default=999999999)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--version", type=int, default=0)
-    parser.add_argument("--method", type=str, default="deer")
+    parser.add_argument("--method", type=str, default="deer_rnn")
     parser.add_argument("--nstates", type=int, default=256)
     parser.add_argument("--nsequence", type=int, default=1024)
     parser.add_argument("--nclass", type=int, default=10)
+    parser.add_argument("--nlayer", type=int, default=5)
+    parser.add_argument(
+        "--dset", type=str, default="pathfinder32",
+        choices=[
+            "imdb",
+            "pathfinder128",
+            "pathfinder64",
+            "pathfinder32",
+            "cifar10",
+            "cifar10grayscale",
+            "listops",
+            "aan"
+        ],
+    )
     args = parser.parse_args()
 
     method = args.method
     nstates = args.nstates
     nsequence = args.nsequence
     nclass = args.nclass
-    dtype = jnp.float32
+    nlayer = args.nlayer
+    dtype = jnp.float64
 
     # check the path
     logpath = "logs"
@@ -172,10 +173,14 @@ def main():
     # set up the model and optimizer
     key = jax.random.PRNGKey(args.seed)
     subkey1, subkey2, subkey3, subkey4, key = jax.random.split(key, 5)
-    model = nn.GRUCell(features=nstates, dtype=dtype, param_dtype=dtype)
+    # model = nn.GRUCell(features=nstates, dtype=dtype, param_dtype=dtype)
+    # carry = model.initialize_carry(
+    #     subkey1,
+    #     (args.batch_size, nstates)
+    # )  # (batch_size, nstates)
+    model = StackedGRU(nlayer=nlayer, nhidden=nstates, dtype=dtype)
     carry = model.initialize_carry(
-        subkey1,
-        (args.batch_size, nstates)
+        args.batch_size
     )  # (batch_size, nstates)
     inputs = jax.random.normal(
         subkey2,
@@ -196,37 +201,60 @@ def main():
     combined_params = {"params": params, "mlp_params": mlp_params}
     opt_state = optimizer.init(combined_params)
 
+    count1 = count_params(combined_params["params"])
+    count2 = count_params(combined_params["mlp_params"])
+    print(count1, count2)
+
     yinit_guess = jnp.zeros((args.batch_size, nsequence, nstates), dtype=dtype)
     y0 = jnp.zeros((args.batch_size, nstates), dtype=dtype)
+    # y0 = [jnp.zeros((args.batch_size, nstates), dtype=dtype) for _ in range(nlayer)]
 
     # get the summary writer
     summary_writer = SummaryWriter(log_dir=path)
 
     # training loop
     step = 0
-    dm = CIFAR10DataModule(
-        data_dir="/home/yhl48/seq2seq/data",
-        batch_size=args.batch_size
-    )
+    dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
     dm.setup()
-    for epoch in range(args.nepochs):
-        for i, batch in enumerate(dm.train_dataloader()):
-            batch = dm.on_before_batch_transfer(batch, i)
-            batch = prep_batch(batch)
-            # x, y = prep_batch(batch)
-            # print(carry.shape, x.shape, yinit_guess.shape)
-            # ypred = jax.vmap(
-            #     rollout, in_axes=(None, None, None, None, 0, 0, 0)
-            # )(model, params, mlp, mlp_params, carry, x, yinit_guess)
-            # pdb.set_trace()
-            # TODO update steps here
+    for epoch in tqdm(range(args.nepochs)):
+        for i, batch in tqdm(enumerate(dm.train_dataloader())):
+            if i > 0:
+                break
+            try:
+                batch = dm.on_before_batch_transfer(batch, i)
+            except:
+                pass
+            batch = prep_batch(batch, dtype)
             combined_params, opt_state, loss, accuracy, yinit_guess = update_step(
                 model, mlp, optimizer, combined_params,
                 opt_state, batch,
                 y0, yinit_guess
             )
             summary_writer.add_scalar("train_loss", loss, step)
+            summary_writer.add_scalar("train_accuracy", accuracy, step)
             step += 1
+
+        val_loss = 0
+        nval = 0
+        val_acc = 0
+        for i, batch in tqdm(enumerate(dm.val_dataloader())):
+            if i > 0:
+                break
+            batch = dm.on_before_batch_transfer(batch, i)
+            batch = prep_batch(batch, dtype)
+            loss, (accuracy, yinit_guess) = loss_fn(
+                model, combined_params["params"], mlp,
+                combined_params["mlp_params"], y0, batch,
+                yinit_guess
+            )
+            val_loss += loss * len(batch[1])
+            val_acc += accuracy * len(batch[1])
+            nval += len(batch[1])
+        val_loss /= nval
+        val_acc /= nval
+        summary_writer.add_scalar("val_loss", val_loss, step)
+        summary_writer.add_scalar("val_accuracy", val_acc, step)
+
 
 if __name__ == "__main__":
     main()
