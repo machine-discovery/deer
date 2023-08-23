@@ -86,7 +86,7 @@ def main():
     plt.text(arrow_x, arrow_y, "%dx faster" % np.round(naccel), va="top", ha="center", backgroundcolor="w", fontsize=12)
     plt.xticks(fontsize=tick_fontsize)
     plt.yticks(fontsize=tick_fontsize)
-    plt.xlabel("Hours", fontsize=label_fontsize)
+    plt.xlabel("Hours\n(a)", fontsize=label_fontsize)
     plt.ylabel("Validation loss", fontsize=label_fontsize)
 
     plt.subplot(1, 2, 2)
@@ -95,7 +95,7 @@ def main():
     plt.plot(fast_step, fast_smooth, 'C0', label=fast_label)
     plt.plot(slow_step, slow_smooth, 'C1', label=slow_label)
     plt.gca().set_yscale("log")
-    plt.xlabel(r"Training steps ($\times 10^3$)", fontsize=label_fontsize)
+    plt.xlabel(r"Training steps ($\times 10^3$)" + "\n(b)", fontsize=label_fontsize)
     plt.legend(fontsize=legend_fontsize)
     plt.xticks(fontsize=tick_fontsize)
     plt.yticks(fontsize=tick_fontsize)
