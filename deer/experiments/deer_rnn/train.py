@@ -53,7 +53,8 @@ def rollout(
 
         # return mlp.apply(mlp_params, y[-1, :]), y
         # take the mean along the sequence length before feeding into a dense layer
-        return mlp.apply(mlp_params, jnp.mean(y, axis=0)), y
+        return mlp.apply(mlp_params, y).mean(axis=0), y
+        # return mlp.apply(mlp_params, jnp.mean(y, axis=0)), y
     if method == "deer_rnn_last":
         y = seq1d(model_func, y0, inputs, params, yinit_guess)  # (nseq, nstates) in a vmap
         # jax.debug.print("{finalhidden}", finalhidden=y[-1, :5])
