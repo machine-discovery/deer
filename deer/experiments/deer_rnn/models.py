@@ -21,7 +21,7 @@ class MLP(nn.Module):
     @nn.compact
     def __call__(self, x):
         x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
-        x = nn.relu(x)
+        x = nn.tanh(x)
         x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
         return x
 
@@ -112,6 +112,15 @@ class MultiScaleGRU(nn.Module):
                 name=f"gru_{i}"
             ) for i in range(self.ngru)
         ]
+        self.log_s = self.param("log_s", nn.initializers.ones, (self.ngru,))
+        self.log_s = jnp.log(jnp.logspace(-1, 1, self.ngru))
+
+    def logspace_init(self, start, stop, num):
+        values = jnp.logspace(start, stop, num)
+
+        def init_func(rng, shape, index):
+            return values[index]
+        return init_func
 
     def initialize_carry(self, batch_size):
         # no seed needed since it is constant
@@ -124,7 +133,9 @@ class MultiScaleGRU(nn.Module):
         outputs = []
 
         for i in range(self.ngru):
-            log_s = self.param(f"log_scale_gru_{i}", self.custom_scalar_init, ())
+            # log_s = self.param(f"log_scale_gru_{i}", self.custom_scalar_init, ())
+            # log_s = self.param(f"log_scale_gru_{i}", self.logspace_init(-3, 3, self.ngru), (), index=i)
+            log_s = self.log_s[i]
             # log_s = self.param(f"log_scale_gru_{i}", nn.initializers.ones, ())
             s = jnp.exp(log_s)
             # jax.debug.print("{s}", s=s)
@@ -153,8 +164,6 @@ class MultiScaleGRU(nn.Module):
     #     for i in range(self.num_layers):
     #         params["params"][f"scalar_{i}"] = scalars[i]
     #     return params
-
-
 
 # class MultiScaleGRU(nn.Module):
 #     nlayer: int
