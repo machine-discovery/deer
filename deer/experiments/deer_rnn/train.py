@@ -1,20 +1,21 @@
-from typing import Tuple, Dict, Any, Optional, List
-import os
-from functools import partial
 import argparse
-from tqdm import tqdm
+import os
+import sys
+from functools import partial
+from typing import Tuple, Any, Optional
+
 import jax
 import jax.numpy as jnp
-from jax.experimental.ode import odeint
-import matplotlib.pyplot as plt
-from tensorboardX import SummaryWriter
-from flax import linen as nn
 import optax
-import pdb
+from flax import linen as nn
+from tqdm import tqdm
+from tensorboardX import SummaryWriter
+
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
 from models import StackedGRU, MLP, MultiScaleGRU
 from deer.seq1d import seq1d
-import sys
+
+
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
 # enable float 64
