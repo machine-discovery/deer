@@ -247,7 +247,7 @@ def main():
             #     break
             try:
                 batch = dm.on_before_batch_transfer(batch, i)
-            except:
+            except Exception():
                 pass
             batch = prep_batch(batch, dtype)
             combined_params, opt_state, loss, accuracy, yinit_guess, gradnorm = update_step(
