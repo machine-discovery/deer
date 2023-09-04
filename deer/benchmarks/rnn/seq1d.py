@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import flax.linen
 from deer.seq1d import seq1d
-
+import pdb
 
 # jax.config.update('jax_platform_name', 'cpu')
 jax.config.update('jax_enable_x64', True)
@@ -42,6 +42,7 @@ def benchmark_seq1d_gru(
     func_benchmark(
         func1, func2, (carry, inputs, params),
         func1_name="Sequential GRU", func2_name="DEER GRU")
+
 
 def func_benchmark(
         func1: Callable, func2: Callable, args: Sequence, with_jit: bool = True,
