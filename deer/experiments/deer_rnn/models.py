@@ -21,7 +21,19 @@ class MLP(nn.Module):
     def __call__(self, x):
         x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
         x = nn.tanh(x)
-        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+        return x
+
+
+class SingleMLP(nn.Module):
+    nout: int
+    nstates: int
+    dtype: Any
+
+    @nn.compact
+    def __call__(self, x):
+        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
+        x = nn.tanh(x)
         return x
 
 
@@ -126,5 +138,93 @@ class MultiScaleGRU(nn.Module):
             outputs.append(states)
 
         states = jnp.mean(jnp.stack(outputs), axis=0)
+
+        return states, states
+
+
+class ScaleGRU(nn.Module):
+    nhidden: int
+    dtype: Any
+
+    def setup(self):
+        self.gru = nn.GRUCell(
+            features=self.nhidden,
+            dtype=self.dtype,
+            param_dtype=self.dtype,
+        )
+
+    def initialize_carry(self, batch_size):
+        return jnp.ones((batch_size, self.nhidden))
+
+    @nn.compact
+    def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray, log_s: float):
+        # h0.shape == (nbatch, nstates)
+        # inputs.shape == (nbatch, ninp)
+
+        s = jnp.exp(log_s)
+        states, _ = self.gru(h0, inputs / s)
+        states = (states - h0) / s + h0
+        return states, states
+
+
+class StackedScaleGRU(nn.Module):
+    nlayer: int
+    nhidden: int
+    dtype: Any
+
+    def logspace_init(self, start: float, stop: float, num: int):
+        values = jnp.log(jnp.logspace(start, stop, num, base=10))
+
+        def init_fn(rng, shape):
+            return values
+
+        return init_fn
+
+    def setup(self):
+        self.gru_cells = [
+            ScaleGRU(
+                name=f"scale_gru_{i}",
+                nhidden=self.nhidden,
+                dtype=self.dtype,
+            ) for i in range(self.nlayer)
+        ]
+        self.norms = [
+            nn.LayerNorm(
+                name=f"norm_{i}",
+            ) for i in range(self.nlayer)
+        ]
+        self.mlp = [
+            MLP(
+                name=f"mlp_{i}",
+                nout=self.nhidden,
+                nstates=self.nhidden,
+                dtype=self.dtype,
+            ) for i in range(self.nlayer - 1)
+        ]
+        self.log_s = self.param(
+            "log_s",
+            self.logspace_init(start=0, stop=3, num=self.nlayer),
+            (self.nlayer,)
+        )
+
+    def initialize_carry(self, batch_size):
+        return jnp.zeros((batch_size, self.nhidden))
+
+    def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray):
+        # h0.shape == (nbatch, nstates)
+        # inputs.shape == (nbatch, ninp)
+        for i, cell in enumerate(self.gru_cells):
+            states, _ = cell(h0, inputs, self.log_s[i])
+            # states = self.norms[i](states)
+            if i < self.nlayer - 1:
+                states = self.mlp[i](states)
+                states = self.norms[i](states)
+            inputs = states
+        states = self.norms[i](states)
+
+        jax.debug.print("{log_s}", log_s=self.log_s)
+
+        # only the state in the last layer is returned, tuple for consistency
+        # see GRUCell source code __call__
 
         return states, states
