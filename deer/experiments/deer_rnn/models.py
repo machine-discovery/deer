@@ -103,6 +103,16 @@ class MultiScaleGRU(nn.Module):
     nhidden: int
     dtype: Any
 
+    def setup(self):
+        self.grus = [
+            StackedGRU(
+                self.nlayer,
+                self.nhidden,
+                self.dtype,
+                name=f"gru_{i}"
+            ) for i in range(self.ngru)
+        ]
+
     def initialize_carry(self, batch_size):
         # no seed needed since it is constant
         return jnp.ones((batch_size, self.nhidden))
@@ -119,7 +129,7 @@ class MultiScaleGRU(nn.Module):
             s = jnp.exp(log_s)
             # jax.debug.print("{s}", s=s)
             # states = UnitGRU(self.nlayer, self.nhidden, self.dtype, name=f"gru_{i}")(h0, inputs * s)
-            states, _ = StackedGRU(self.nlayer, self.nhidden, self.dtype, name=f"gru_{i}")(h0, inputs * s)
+            states, _ = self.grus[i](h0, inputs * s)
             # jax.debug.print("{delta}", delta=jnp.mean(states - h0))
             states = (states - h0) * s + h0
             outputs.append(states)
@@ -130,7 +140,7 @@ class MultiScaleGRU(nn.Module):
 
     @staticmethod
     def custom_scalar_init(rng, shape):
-        scalars = -2 + 4 * jax.random.uniform(rng)
+        scalars = -3 + 6 * jax.random.uniform(rng)
         # log_increment = 0.1
         # scalars = jnp.array([(i + 1) * log_increment for i in range(shape[0])])
         return scalars
