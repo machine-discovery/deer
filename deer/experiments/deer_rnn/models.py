@@ -21,19 +21,7 @@ class MLP(nn.Module):
     def __call__(self, x):
         x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
         x = nn.tanh(x)
-        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
-        return x
-
-
-class SingleMLP(nn.Module):
-    nout: int
-    nstates: int
-    dtype: Any
-
-    @nn.compact
-    def __call__(self, x):
-        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
-        x = nn.tanh(x)
+        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
         return x
 
 
@@ -181,6 +169,15 @@ class StackedScaleGRU(nn.Module):
         return init_fn
 
     def setup(self):
+        self.encoder = MLP(
+            name="linear_encoder",
+            nout=self.nhidden,
+            nstates=self.nhidden,
+            dtype=self.dtype,
+        )
+        self.pre_gru_norm = nn.LayerNorm(
+            name="pre_gru_norm",
+        )
         self.gru_cells = [
             ScaleGRU(
                 name=f"scale_gru_{i}",
@@ -203,7 +200,8 @@ class StackedScaleGRU(nn.Module):
         ]
         self.log_s = self.param(
             "log_s",
-            self.logspace_init(start=0, stop=3, num=self.nlayer),
+            self.logspace_init(start=0, stop=self.nlayer - 1, num=self.nlayer),
+            # self.logspace_init(start=-1, stop=0, num=self.nlayer),
             (self.nlayer,)
         )
 
@@ -213,18 +211,121 @@ class StackedScaleGRU(nn.Module):
     def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray):
         # h0.shape == (nbatch, nstates)
         # inputs.shape == (nbatch, ninp)
+
+        # inputs = self.encoder(inputs)
+        # inputs = self.pre_gru_norm(inputs)
+        # concat_states = []
+
         for i, cell in enumerate(self.gru_cells):
             states, _ = cell(h0, inputs, self.log_s[i])
-            # states = self.norms[i](states)
+            # states, _ = cell(h0[i * self.nhidden:(i + 1) * self.nhidden], inputs, self.log_s[i])
+            # concat_states.append(states)
             if i < self.nlayer - 1:
                 states = self.mlp[i](states)
-                states = self.norms[i](states)
+                # states = self.norms[i](states)
             inputs = states
-        states = self.norms[i](states)
+        # states += a
 
         jax.debug.print("{log_s}", log_s=self.log_s)
 
         # only the state in the last layer is returned, tuple for consistency
         # see GRUCell source code __call__
 
+        # states = jnp.concatenate(concat_states, axis=-1)
+
         return states, states
+
+
+class TmpScaleGRU(nn.Module):
+    nhidden: int
+    dtype: Any
+    scale: float
+
+    def scaled_initializers(self, scale: float):
+        def init_fn(key, shape):
+            return jnp.log(jnp.ones(shape) * scale)
+        return init_fn
+
+    def setup(self):
+        self.gru = nn.GRUCell(
+            features=self.nhidden,
+            dtype=self.dtype,
+            param_dtype=self.dtype,
+        )
+        self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
+
+    def initialize_carry(self, batch_size):
+        return jnp.ones((batch_size, self.nhidden))
+
+    @nn.compact
+    def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray):
+        # h0.shape == (nbatch, nstates)
+        # inputs.shape == (nbatch, ninp)
+        s = jnp.exp(self.log_s)
+        # pdb.set_trace()
+        states, _ = self.gru(h0, inputs / s)
+        # pdb.set_trace()
+        states = (states - h0) / s + h0
+        # pdb.set_trace()
+        return states, states
+
+
+# class ScaleGRU(nn.Module):
+#     nstates: int
+#     scale: float
+#     dtype: Any
+
+#     def scaled_initializers(self, scale: float):
+#         def init_fn(key, shape):
+#             return jnp.log(jnp.ones(shape) * scale)
+#         return init_fn
+
+#     def setup(self):
+#         self.gru = nn.GRUCell(
+#             features=self.nstates,
+#             dtype=self.dtype,
+#             param_dtype=self.dtype,
+#         )
+#         self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
+
+
+#     @nn.compact
+#     def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray):
+#         # h0.shape == (nbatch, nstates)
+#         # inputs.shape == (nbatch, ninp)
+#         log_s = 1
+#         s = jnp.exp(log_s)
+#         states, _ = self.gru(h0, inputs / s)
+#         # pdb.set_trace()
+#         states = (states - h0) / s + h0
+#         # pdb.set_trace()
+#         return states, states
+
+
+# class MLP(nn.Module):
+#     nstates: int
+#     nout: int
+#     dtype: Any
+
+#     @nn.compact
+#     def __call__(self, x):
+#         x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
+#         x = nn.tanh(x)
+#         x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+#         return x
+
+
+# class MultiScaleGRU(nn.Module):
+#     nchannel: int
+#     nstates: int
+#     dtype: Any
+    
+#     def initialize_carry(self, batch_size):
+#         return jnp.ones((batch_size, self.nhidden))
+
+#     def setup(self):
+#         self.encoder = MLP(nstates=self.nstates, dtype=self.dtype)
+#         self.scale_grus = 
+#         self.mlps = [
+            
+#         ]
