@@ -103,7 +103,7 @@ class RNNClassifier(eqx.Module):
             ])
         else:
             self.embedding = eqx.nn.Identity()
-        self.norms = [eqx.nn.LayerNorm((nhiddens,)) for i in range(nlayers)]
+        self.norms = [eqx.nn.LayerNorm((nhiddens,), use_weight=False, use_bias=False) for i in range(nlayers)]
 
     def __call__(self, xs: jnp.ndarray, yinit_guess: Optional[List[jnp.ndarray]] = None) \
             -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
