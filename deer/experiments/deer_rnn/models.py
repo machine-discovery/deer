@@ -127,6 +127,7 @@ class MultiScaleGRU(eqx.Module):
     scale_grus: List[List[ScaleGRU]]
     mlps: List[MLP]
     classifier: MLP
+    norms: List[eqx.nn.LayerNorm]
 
     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
         keycount = 1 + (nchannel + 1) * nlayer + 1
@@ -163,6 +164,8 @@ class MultiScaleGRU(eqx.Module):
         # project nstates in the feature dimension to nclasses for classification
         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
+        self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer)]
+
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
@@ -173,6 +176,7 @@ class MultiScaleGRU(eqx.Module):
         x_from_all_layers = []
         # TODO there should be a way to vmap the channel
         for i in range(self.nlayer):
+            x = self.norms[i](inputs)
             x_from_all_channels = []
             for ch in range(self.nchannel):
 
