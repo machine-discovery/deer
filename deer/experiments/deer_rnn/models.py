@@ -221,7 +221,7 @@ def vmap_to_shape(func: Callable, shape: Sequence[int]):
 
 
 class MLP(eqx.Module):
-    model: eqx.nn.Sequential
+    model: eqx.nn.MLP
 
     def __init__(self, ninp: int, nstate: int, nout: int, key: prng.PRNGKeyArray):
         self.model = eqx.nn.MLP(
@@ -256,6 +256,7 @@ class ScaleGRU(eqx.Module):
         assert len(inputs.shape) == len(h0.shape)
 
         s = jnp.exp(self.log_s)
+        jax.debug.print("{s}", s=s)
         states = vmap_to_shape(self.gru, inputs.shape)(inputs / s, h0)
         states = (states - h0) / s + h0
         return states
@@ -270,6 +271,9 @@ class MultiScaleGRU(eqx.Module):
     classifier: MLP
 
     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
+        keycount = 1 + (nchannel + 1) * nlayer + 1
+        keys = jax.random.split(key, keycount)
+
         self.nchannel = nchannel
         self.nlayer = nlayer
 
@@ -277,7 +281,7 @@ class MultiScaleGRU(eqx.Module):
         gru_nstate = int(nstate / nchannel)
 
         # encode inputs (or rather, project) to have nstates in the feature dimension
-        self.encoder = MLP(ninp=ninp, nstate=nstate, nout=nstate, key=key)
+        self.encoder = MLP(ninp=ninp, nstate=nstate, nout=nstate, key=keys[0])
 
         # nlayers of (scale_gru + mlp) pair
         self.scale_grus = [[
@@ -285,35 +289,32 @@ class MultiScaleGRU(eqx.Module):
                 ninp=nstate,
                 nstate=gru_nstate,
                 scale=10 ** i,
-                key=key
-            ) for i in range(nchannel)] for _ in range(nlayer)
+                key=keys[int(1 + (nchannel * j) + i)]
+            ) for i in range(nchannel)] for j in range(nlayer)
         ]
         self.mlps = [
-            MLP(ninp=nstate, nstate=nstate, nout=nstate, key=key) for _ in range(nlayer)
+            MLP(ninp=nstate, nstate=nstate, nout=nstate, key=keys[int(i + 1 + nchannel * nlayer)]) for i in range(nlayer)
         ]
         assert len(self.scale_grus) == nlayer
         assert len(self.scale_grus[0]) == nchannel
         assert len(self.mlps) == nlayer
 
         # project nstates in the feature dimension to nclasses for classification
-        self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=key)
+        self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
-        # jax.debug.print("{yinit_guess_shape}", yinit_guess_shape=yinit_guess.shape)
-        # jax.debug.print("{inputs}", inputs=inputs.shape)
 
         x_from_all_layers = []
         # TODO there should be a way to vmap the channel
         for i in range(self.nlayer):
             x_from_all_channels = []
             for ch in range(self.nchannel):
-                # print(i, ch)
 
                 def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
                     return model(inputs, carry)
-                # pdb.set_trace()
+
                 x = seq1d(
                     model_func,
                     h0[i][ch],
@@ -321,7 +322,6 @@ class MultiScaleGRU(eqx.Module):
                     self.scale_grus[i][ch],
                     yinit_guess[i][ch]
                 )
-                # pdb.set_trace()
                 # think vmap should be removed later??
                 # x = jax.vmap(seq1d, in_axes=(None, 0, 0, None, 0))(
                 #     model_func,
@@ -336,11 +336,11 @@ class MultiScaleGRU(eqx.Module):
             x = self.mlps[i](x)
             inputs = x
         yinit_guess = jnp.stack(x_from_all_layers)
-        # jax.debug.print("{yinit_guess_shape}", yinit_guess_shape=yinit_guess.shape)
         return self.mlps[-1](x), yinit_guess
 
 
 if __name__ == "__main__":
+    # this only works with jax.vmap(seq1d) in MultiScaleGRU
     ninp = 1
     nstate = 32
     nchannel = 4
