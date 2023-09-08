@@ -176,7 +176,8 @@ class MultiScaleGRU(eqx.Module):
         x_from_all_layers = []
         # TODO there should be a way to vmap the channel
         for i in range(self.nlayer):
-            x = self.norms[i](inputs)
+            inputs = self.norms[i](inputs)
+
             x_from_all_channels = []
             for ch in range(self.nchannel):
 
