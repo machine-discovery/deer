@@ -172,20 +172,18 @@ def main():
 
     # set up the model and optimizer
     key = jax.random.PRNGKey(args.seed)
-    subkey1, subkey2 = jax.random.split(key, 2)
     model = MultiScaleGRU(
         ninp=ninp,
         nchannel=nchannel,
         nstate=nstate,
         nlayer=nlayer,
         nclass=nclass,
-        key=subkey1
+        key=key
     )
     y0 = jnp.zeros(
         (nlayer, nchannel, batch_size, int(nstate / nchannel))
     )  # (nlayer, nchannel, batch_size, nstates)
-    yinit_guess = jax.random.normal(
-        subkey2,
+    yinit_guess = jnp.zeros(
         (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
     )  # (nlayer, nchannel, batch_size, nsequence, nstates)
 
