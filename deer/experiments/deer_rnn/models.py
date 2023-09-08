@@ -3,7 +3,7 @@ from typing import Any, List, Tuple, Callable, Sequence
 
 import jax
 import jax.numpy as jnp
-# from jax.nn.initializers import glorot_uniform, xavier_uniform
+from jax.nn.initializers import glorot_uniform, xavier_uniform
 import equinox as eqx
 from flax import linen as nn
 from jax._src import prng
@@ -16,6 +16,12 @@ import pdb
 def he_uniform(key, shape, dtype):
     fan_in = shape[-1]
     bound = jnp.sqrt(6 / fan_in)
+    return jax.random.uniform(key, shape, dtype, minval=-bound, maxval=bound)
+
+
+def _uniform(key, shape, dtype):
+    fan_in = shape[-1]
+    bound = jnp.sqrt(1 / fan_in)
     return jax.random.uniform(key, shape, dtype, minval=-bound, maxval=bound)
 
 
@@ -34,6 +40,8 @@ class TmpScaleGRU(nn.Module):
             features=self.nhidden,
             dtype=self.dtype,
             param_dtype=self.dtype,
+            # kernel_init=_uniform,
+            # recurrent_kernel_init=_uniform,
         )
         self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
 
@@ -80,12 +88,12 @@ class MLP(eqx.Module):
             width_size=nstate,
             depth=1,
             activation=jax.nn.tanh,
+            # final_activation=jax.nn.tanh,  # adding --> even smaller gradient
             key=key
         )
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         return vmap_to_shape(self.model, x.shape)(x)
-
 
 class ScaleGRU(eqx.Module):
     # check if everything defined here is meant to be trainable
@@ -98,7 +106,7 @@ class ScaleGRU(eqx.Module):
             hidden_size=nstate,
             key=key
         )
-        self.log_s = jnp.log(jnp.ones(1) * scale)
+        self.log_s = jnp.log(jnp.ones((1,)) * scale)
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         # h0.shape == (nbatch, nstate)
@@ -189,7 +197,7 @@ class MultiScaleGRU(eqx.Module):
             x = self.mlps[i](x)
             inputs = x
         yinit_guess = jnp.stack(x_from_all_layers)
-        return self.mlps[-1](x), yinit_guess
+        return self.classifier(x), yinit_guess
 
 
 if __name__ == "__main__":
