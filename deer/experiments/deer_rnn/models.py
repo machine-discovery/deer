@@ -298,35 +298,49 @@ class MultiScaleGRU(eqx.Module):
         # project nstates in the feature dimension to nclasses for classification
         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=key)
 
-    def __call__(self, inputs: jnp.ndarray, h0: List[jnp.ndarray], yinit_guess: List[jnp.ndarray]):
+    def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
+        # jax.debug.print("{yinit_guess_shape}", yinit_guess_shape=yinit_guess.shape)
+        # jax.debug.print("{inputs}", inputs=inputs.shape)
 
+        x_from_all_layers = []
+        # TODO there should be a way to vmap the channel
         for i in range(self.nlayer):
             x_from_all_channels = []
             for ch in range(self.nchannel):
+                # print(i, ch)
 
-                def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any):
-                    return self.scale_grus[i][ch](inputs, carry)
-
-                x = jax.vmap(seq1d, in_axes=(None, 0, 0, None, 0))(
+                def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
+                    return model(inputs, carry)
+                # pdb.set_trace()
+                x = seq1d(
                     model_func,
-                    h0[i],
+                    h0[i][ch],
                     inputs,
-                    None,
+                    self.scale_grus[i][ch],
                     yinit_guess[i][ch]
                 )
+                # pdb.set_trace()
+                # think vmap should be removed later??
+                # x = jax.vmap(seq1d, in_axes=(None, 0, 0, None, 0))(
+                #     model_func,
+                #     h0[i][ch],
+                #     inputs,
+                #     None,
+                #     yinit_guess[i][ch]
+                # )
                 x_from_all_channels.append(x)
+            x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
             x = self.mlps[i](x)
             inputs = x
-        return self.mlps[-1](x), x_from_all_channels
-
+        yinit_guess = jnp.stack(x_from_all_layers)
+        # jax.debug.print("{yinit_guess_shape}", yinit_guess_shape=yinit_guess.shape)
+        return self.mlps[-1](x), yinit_guess
 
 
 if __name__ == "__main__":
-    # gru = ScaleGRU(2, 10, 2, jax.random.PRNGKey(1))
-    # mlp = MLP(2, 10, 1, jax.random.PRNGKey(1))
     ninp = 1
     nstate = 32
     nchannel = 4
@@ -366,36 +380,8 @@ if __name__ == "__main__":
         jax.random.PRNGKey(1),
         (batch_size, nseq, int(nstate / nchannel)),
     )  # (batch_size, nsequence, nstates)
-    # y, _ = scale_gru(mlp(inputs[:, 0, :]), carry)
-    y = model(inputs, [carry for _ in range(nchannel)], [[yinit_guess for _ in range(nchannel)] for _ in range(nlayer)])
-    pdb.set_trace()
-    # jax.config.update('jax_enable_x64', True)
-
-    # model = MultiScaleGRU(
-    #     nchannels=1,
-    #     nstates=32,
-    #     nlayers=3,
-    #     nclasses=2,
-    #     dtype=jnp.float64
-    # )
-
-    # key = jax.random.PRNGKey(0)
-
-    # carry = model.initialize_carry(
-    #     batch_size=24
-    # )  # (batch_size, nstates)
-    # inputs = jax.random.normal(
-    #     key,
-    #     (24, 10, 1),
-    #     dtype=jnp.float64
-    # )  # (batch_size, nsequence, nstates)
-    # yinit_guess = jax.random.normal(
-    #     key,
-    #     (24, 10, 32),
-    #     dtype=jnp.float64
-    # )  # (batch_size, nsequence, nstates)
-    # params = model.init(key, carry, inputs, yinit_guess)
-
-    # # model = jax.vmap(model, in_axes=(0, 0, 0))
-
-    # model.apply(params, carry, inputs, yinit_guess)
+    y = model(
+        inputs,
+        [[carry for _ in range(nchannel)] for _ in range(nlayer)],
+        [[yinit_guess for _ in range(nchannel)] for _ in range(nlayer)]
+    )
