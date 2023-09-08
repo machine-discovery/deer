@@ -171,27 +171,23 @@ def main():
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
-    # key = jax.random.PRNGKey(args.seed)
-    # subkey1, subkey2, subkey3, subkey4, key = jax.random.split(key, 5)
+    key = jax.random.PRNGKey(args.seed)
+    subkey1, subkey2 = jax.random.split(key, 2)
     model = MultiScaleGRU(
         ninp=ninp,
         nchannel=nchannel,
         nstate=nstate,
         nlayer=nlayer,
         nclass=nclass,
-        key=jax.random.PRNGKey(args.seed)
+        key=subkey1
     )
     y0 = jnp.zeros(
-        (batch_size, int(nstate / nchannel))
-    )  # (batch_size, nstates)
-    # (nlayer, nchannel, batch_size, nstates)
-    y0 = jnp.stack([jnp.stack([y0 for _ in range(nchannel)]) for _ in range(nlayer)])
+        (nlayer, nchannel, batch_size, int(nstate / nchannel))
+    )  # (nlayer, nchannel, batch_size, nstates)
     yinit_guess = jax.random.normal(
-        jax.random.PRNGKey(1),
-        (batch_size, nsequence, int(nstate / nchannel)),
-    )
-    # (nlayer, nchannel, batch_size, nsequence, nstates)
-    yinit_guess = jnp.stack([jnp.stack([yinit_guess for _ in range(nchannel)]) for _ in range(nlayer)])
+        subkey2,
+        (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
+    )  # (nlayer, nchannel, batch_size, nsequence, nstates)
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(max_norm=.1),
@@ -199,6 +195,7 @@ def main():
     )
     params, static = eqx.partition(model, eqx.is_array)
     opt_state = optimizer.init(params)
+    print(count_params(params))
 
     # count1 = count_params(combined_params["params"])
     # count2 = count_params(combined_params["mlp_params"])
