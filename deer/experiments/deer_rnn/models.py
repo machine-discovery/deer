@@ -1,5 +1,5 @@
 import functools
-from typing import Any, List, Tuple, Callable, Sequence
+from typing import Any, List, Tuple, Callable, Sequence, Optional
 
 import jax
 import jax.numpy as jnp
@@ -40,8 +40,8 @@ class TmpScaleGRU(nn.Module):
             features=self.nhidden,
             dtype=self.dtype,
             param_dtype=self.dtype,
-            # kernel_init=_uniform,
-            # recurrent_kernel_init=_uniform,
+            kernel_init=_uniform,
+            recurrent_kernel_init=_uniform,
         )
         self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
 
@@ -65,9 +65,12 @@ class MLP1(nn.Module):
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
+        # x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
+        # x = nn.tanh(x)
+        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=_uniform)(x)
         x = nn.tanh(x)
-        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=_uniform)(x)
         return x
 
 
@@ -76,6 +79,57 @@ def vmap_to_shape(func: Callable, shape: Sequence[int]):
     for i in range(rank - 1):
         func = jax.vmap(func)
     return func
+
+
+def custom_mlp(mlp: eqx.nn.MLP, key: prng.PRNGKeyArray, init_method: Optional[str] = "he_uniform") -> eqx.nn.MLP:
+    """
+    eqx.nn.MLP with custom initialisation scheme using jax.nn.initializers
+    """
+    where_bias = lambda m: [lin.bias for lin in m.layers]
+    where_weight = lambda m: [lin.weight for lin in m.layers]
+
+    mlp = eqx.tree_at(where=where_bias, pytree=mlp, replace_fn=jnp.zeros_like)
+
+    if init_method is None:
+        return mlp
+
+    if init_method == "he_uniform":
+        # get all the weights of the mlp model
+        weights = where_weight(mlp)
+        # split the random key into different subkeys for each layer
+        subkeys = jax.random.split(key, len(weights))
+        new_weights = [
+            jax.nn.initializers.he_uniform()(subkey, weight.shape) for weight, subkey in zip(weights, subkeys)
+        ]
+        mlp = eqx.tree_at(where=where_weight, pytree=mlp, replace=new_weights)
+    else:
+        return NotImplementedError("only he_uniform is implemented")
+    return mlp
+
+
+def custom_gru(gru: eqx.nn.GRUCell, key: prng.PRNGKeyArray) -> eqx.nn.GRUCell:
+    """
+    eqx.nn.GRUCell with custom initialisation scheme using jax.nn.initializers
+    """
+    where_bias = lambda g: g.bias
+    where_bias_n = lambda g: g.bias_n
+    where_weight_ih = lambda g: g.weight_ih
+    where_weight_hh = lambda g: g.weight_hh
+
+    gru = eqx.tree_at(where=where_bias, pytree=gru, replace_fn=jnp.zeros_like)
+    gru = eqx.tree_at(where=where_bias_n, pytree=gru, replace_fn=jnp.zeros_like)
+
+    weight_ih = where_weight_ih(gru)
+    weight_hh = where_weight_hh(gru)
+
+    ih_key, hh_key = jax.random.split(key, 2)
+
+    new_weight_ih = jax.nn.initializers.lecun_normal()(ih_key, weight_ih.shape)
+    new_weight_hh = jax.nn.initializers.orthogonal()(hh_key, weight_hh.shape)
+
+    gru = eqx.tree_at(where_weight_ih, gru, new_weight_ih)
+    gru = eqx.tree_at(where_weight_hh, gru, new_weight_hh)
+    return gru
 
 
 class MLP(eqx.Module):
@@ -91,9 +145,11 @@ class MLP(eqx.Module):
             # final_activation=jax.nn.tanh,  # adding --> even smaller gradient
             key=key
         )
+        self.model = custom_mlp(self.model, key)
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         return vmap_to_shape(self.model, x.shape)(x)
+
 
 class ScaleGRU(eqx.Module):
     # check if everything defined here is meant to be trainable
@@ -106,6 +162,7 @@ class ScaleGRU(eqx.Module):
             hidden_size=nstate,
             key=key
         )
+        self.gru = custom_gru(self.gru, key)
         self.log_s = jnp.log(jnp.ones((1,)) * scale)
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -127,7 +184,9 @@ class MultiScaleGRU(eqx.Module):
     scale_grus: List[List[ScaleGRU]]
     mlps: List[MLP]
     classifier: MLP
-    norms: List[eqx.nn.LayerNorm]
+    # norms: List[eqx.nn.LayerNorm]
+    # dropout: eqx.nn.Dropout
+    # dropout_key: prng.PRNGKeyArray
 
     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
         keycount = 1 + (nchannel + 1) * nlayer + 1
@@ -164,7 +223,9 @@ class MultiScaleGRU(eqx.Module):
         # project nstates in the feature dimension to nclasses for classification
         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
-        self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer)]
+        # self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer)]
+        # self.dropout = eqx.nn.Dropout(p=0.2)
+        # self.dropout_key = jax.random.PRNGKey(42)
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
@@ -199,6 +260,7 @@ class MultiScaleGRU(eqx.Module):
                 x_from_all_channels.append(x)
             x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
+            # x = self.dropout(x, key=jax.random.PRNGKey(42))
             x = self.mlps[i](x)
             inputs = x + inputs
         yinit_guess = jnp.stack(x_from_all_layers)
@@ -212,14 +274,47 @@ if __name__ == "__main__":
     nchannel = 4
     nclass = 2
     nlayer = 3
-    model = MultiScaleGRU(
-        ninp=ninp,
-        nchannel=nchannel,
-        nstate=nstate,
-        nlayer=nlayer,
-        nclass=nclass,
-        key=jax.random.PRNGKey(1)
-    )
+    # model = MultiScaleGRU(
+    #     ninp=ninp,
+    #     nchannel=nchannel,
+    #     nstate=nstate,
+    #     nlayer=nlayer,
+    #     nclass=nclass,
+    #     key=jax.random.PRNGKey(1)
+    # )
+    # mlp = MLP(
+    #     ninp=ninp,
+    #     nstate=nstate,
+    #     nout=nstate,
+    #     key=jax.random.PRNGKey(1)
+    # )
+    # scale_gru = ScaleGRU(
+    #     ninp=nstate,
+    #     nstate=nstate,
+    #     scale=1,
+    #     key=jax.random.PRNGKey(1)
+    # )
+
+    nseq = 69
+    batch_size = 7
+    # carry = jnp.zeros(
+    #     (batch_size, int(nstate / nchannel))
+    # )  # (batch_size, nstates)
+    # inputs = jax.random.normal(
+    #     jax.random.PRNGKey(1),
+    #     (batch_size, nseq, ninp),
+    # )  # (batch_size, nsequence, nstates)
+    # yinit_guess = jax.random.normal(
+    #     jax.random.PRNGKey(1),
+    #     (batch_size, nseq, int(nstate / nchannel)),
+    # )  # (batch_size, nsequence, nstates)
+    # y = model(
+    #     inputs,
+    #     [[carry for _ in range(nchannel)] for _ in range(nlayer)],
+    #     [[yinit_guess for _ in range(nchannel)] for _ in range(nlayer)]
+    # )
+
+    inputs = jnp.ones((batch_size, nseq, ninp))
     mlp = MLP(
         ninp=ninp,
         nstate=nstate,
@@ -231,23 +326,4 @@ if __name__ == "__main__":
         nstate=nstate,
         scale=1,
         key=jax.random.PRNGKey(1)
-    )
-
-    nseq = 69
-    batch_size = 7
-    carry = jnp.zeros(
-        (batch_size, int(nstate / nchannel))
-    )  # (batch_size, nstates)
-    inputs = jax.random.normal(
-        jax.random.PRNGKey(1),
-        (batch_size, nseq, ninp),
-    )  # (batch_size, nsequence, nstates)
-    yinit_guess = jax.random.normal(
-        jax.random.PRNGKey(1),
-        (batch_size, nseq, int(nstate / nchannel)),
-    )  # (batch_size, nsequence, nstates)
-    y = model(
-        inputs,
-        [[carry for _ in range(nchannel)] for _ in range(nlayer)],
-        [[yinit_guess for _ in range(nchannel)] for _ in range(nlayer)]
     )
