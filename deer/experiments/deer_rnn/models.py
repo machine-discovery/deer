@@ -40,8 +40,8 @@ class TmpScaleGRU(nn.Module):
             features=self.nhidden,
             dtype=self.dtype,
             param_dtype=self.dtype,
-            kernel_init=_uniform,
-            recurrent_kernel_init=_uniform,
+            # kernel_init=_uniform,
+            # recurrent_kernel_init=_uniform,
         )
         self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
 
@@ -65,12 +65,12 @@ class MLP1(nn.Module):
 
     @nn.compact
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        # x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
-        # x = nn.tanh(x)
-        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
-        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=_uniform)(x)
+        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
         x = nn.tanh(x)
-        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=_uniform)(x)
+        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
+        # x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=_uniform)(x)
+        # x = nn.tanh(x)
+        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=_uniform)(x)
         return x
 
 
@@ -184,7 +184,7 @@ class MultiScaleGRU(eqx.Module):
     scale_grus: List[List[ScaleGRU]]
     mlps: List[MLP]
     classifier: MLP
-    # norms: List[eqx.nn.LayerNorm]
+    norms: List[eqx.nn.LayerNorm]
     # dropout: eqx.nn.Dropout
     # dropout_key: prng.PRNGKeyArray
 
@@ -223,7 +223,7 @@ class MultiScaleGRU(eqx.Module):
         # project nstates in the feature dimension to nclasses for classification
         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
-        # self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer)]
+        self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
         # self.dropout = eqx.nn.Dropout(p=0.2)
         # self.dropout_key = jax.random.PRNGKey(42)
 
@@ -237,7 +237,7 @@ class MultiScaleGRU(eqx.Module):
         x_from_all_layers = []
         # TODO there should be a way to vmap the channel
         for i in range(self.nlayer):
-            # inputs = self.norms[i](inputs)
+            inputs = self.norms[i](inputs)
 
             x_from_all_channels = []
             for ch in range(self.nchannel):
@@ -260,9 +260,10 @@ class MultiScaleGRU(eqx.Module):
                 x_from_all_channels.append(x)
             x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
+            x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
             # x = self.dropout(x, key=jax.random.PRNGKey(42))
-            x = self.mlps[i](x)
-            inputs = x + inputs
+            x = self.mlps[i](x) + x  # add with norm added in the next loop
+            inputs = x
         yinit_guess = jnp.stack(x_from_all_layers)
         return self.classifier(x), yinit_guess
 
