@@ -1,4 +1,4 @@
-from typing import Callable, Optional, List, Tuple
+from typing import Callable, Optional, List, Tuple, Dict
 from functools import partial
 import jax
 import jax.numpy as jnp
@@ -49,10 +49,11 @@ class CellLayer(eqx.Module):
         self.cell_type = cell_type
         self.eval_method = eval_method
 
-    def __call__(self, xs: jnp.ndarray, yinit_guess: Optional[jnp.ndarray] = None) \
-            -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, xs: jnp.ndarray, model_states: Dict) \
+            -> Tuple[jnp.ndarray, Dict]:
         # xs: (nsamples, ninputs)
         # outputs: (nsamples, nhiddens)
+        yinit_guess = None
 
         # initialize the states
         if self.cell_type == "gru":
@@ -77,8 +78,7 @@ class CellLayer(eqx.Module):
                 outputs = jnp.concatenate(outputs, axis=-1)
         else:
             raise ValueError(f"Unknown eval_method: {self.eval_method}")
-        yinit_guess = outputs
-        return outputs, yinit_guess
+        return outputs, model_states
 
 class RNNClassifier(eqx.Module):
     cells: List[CellLayer]
@@ -105,17 +105,14 @@ class RNNClassifier(eqx.Module):
             self.embedding = eqx.nn.Identity()
         self.norms = [eqx.nn.LayerNorm((nhiddens,)) for i in range(nlayers)]
 
-    def __call__(self, xs: jnp.ndarray, yinit_guess: Optional[List[jnp.ndarray]] = None) \
-            -> Tuple[jnp.ndarray, List[jnp.ndarray]]:
+    def __call__(self, xs: jnp.ndarray, model_states: Dict) \
+            -> Tuple[jnp.ndarray, Dict]:
         # xs: (nsamples, ninputs)
         # outputs: (noutputs,)
-        if yinit_guess is None:
-            yinit_guess = [None] * len(self.cells)
 
         xs = self.embedding(xs)  # (nsamples, ninputs)
-        new_yinit_guess = []
         for i, cell in enumerate(self.cells):
-            xs_new, yinit_g = cell(xs, yinit_guess=yinit_guess[i])
+            xs_new, model_states = cell(xs, model_states)
             # if i != 0:
             #     xs = xs + xs_new
             # else:
@@ -123,12 +120,11 @@ class RNNClassifier(eqx.Module):
             xs = xs_new
             xs = jax.vmap(self.norms[i])(xs)
             # xs = xs[::2]
-            new_yinit_guess.append(yinit_g)
         # xs: (nsamples, nhiddens)
         xlast = jnp.mean(xs, axis=0)  # (nhiddens,)
         # xlast = xs[-1]  # (nhiddens,)
         xs = self.mlp(xlast)  # (noutputs,)
-        return xs, new_yinit_guess  # [nlayers] + (nsamples, nhiddens)
+        return xs, model_states  # [nlayers] + (nsamples, nhiddens)
 
 
 if __name__ == "__main__":
