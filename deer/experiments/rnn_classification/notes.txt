@@ -29,5 +29,7 @@
 29: python train.py --version 29 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, layernorms, state following outputs) [only small number of steps after 27 that it becomes nan]
 30-: python train.py --version 30 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, no layernorms, saving the initguess per data) [too much memory used, not runned]
 30: python train.py --version 30 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, no layernorms, clipped the newton direction) [the iteration did not converge]
-31: python train.py --version 31 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, no layernorms, ) [no nan until 39k steps, as opposed to 31k for #30]
+31: python train.py --version 31 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, no layernorms) [no nan until 39k steps, as opposed to 31k for #30]
 32: python train.py --version 32 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, layernorms w/o affine)
+33: python train.py --version 33 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, layernorms, adamw) [same as 27]
+34: python train.py --version 34 --model grudeer --dataset rightwhalecalls --batch_size 16 (no embedding, no skip, no downsample, layernorms, adamw wdecay=1e-2) [same as 27]
