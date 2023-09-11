@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Tuple, Dict
 import os
 import argparse
 from tqdm import tqdm
@@ -15,47 +15,46 @@ from deer.experiments.rnn_classification.models import RNNClassifier
 
 # jax.config.update("jax_platform_name", "cpu")
 
-def loss_fn(params, static, xs: jnp.ndarray, targets: jnp.ndarray, yinit_guess: Any = None) \
-        -> Tuple[jnp.ndarray, Any]:
+def loss_fn(params, static, xs: jnp.ndarray, targets: jnp.ndarray, model_states: Dict) \
+        -> Tuple[jnp.ndarray, Dict]:
     # xs: (batch_size, nsamples, ninputs)
     # targets: (batch_size,) int
     model = eqx.combine(params, static)
-    yinit_guess_axis = None if yinit_guess is None else 0
-    # ys: (batch_size, noutputs), new_yinit_guess: [nlayers] + (batch_size, nsamples, nhiddens)
-    ys, new_yinit_guess = jax.vmap(model, in_axes=(0, yinit_guess_axis))(xs, yinit_guess)
+    # ys: (batch_size, noutputs)
+    ys, model_states = jax.vmap(model, in_axes=(0, None))(xs, model_states)
     loss = jax.vmap(optax.softmax_cross_entropy_with_integer_labels)(ys, targets)  # (batch_size,)
     # jax.debug.print("ys: {ys}", ys=jnp.argmax(ys, axis=-1))
     # jax.debug.print("targets: {targets}", targets=targets)
     # jax.debug.print("loss: {loss}", loss=loss)
     # jax.debug.print("correct: {correct}", correct=jnp.equal(jnp.argmax(ys, axis=-1), targets))
     # jax.debug.print("accuracy: {accuracy}", accuracy=jnp.mean(jnp.equal(jnp.argmax(ys, axis=-1), targets)))
-    return jnp.mean(loss), new_yinit_guess
+    return jnp.mean(loss), model_states
 
-@partial(jax.jit, static_argnames=("static", "yinit_guess"))
-def calc_accuracy(params, static, xs: jnp.ndarray, targets: jnp.ndarray, yinit_guess: Any = None) -> jnp.ndarray:
-    yinit_gaxis = None if yinit_guess is None else 0
+@partial(jax.jit, static_argnames=("static",))
+def calc_accuracy(params, static, xs: jnp.ndarray, targets: jnp.ndarray, model_states: Dict) \
+        -> Tuple[jnp.ndarray, Dict]:
     # preds: (batch_size, noutputs), new_yinit_guess: [nlayers] + (batch_size, nsamples, nhiddens)
     model = eqx.combine(params, static)
-    preds, new_yinit_guess = jax.vmap(model, in_axes=(0, yinit_gaxis))(xs, yinit_guess)
+    preds, model_states = jax.vmap(model, in_axes=(0, None))(xs, model_states)
     idx_preds = jnp.argmax(preds, axis=-1)  # (batch_size,)
     # jax.debug.print("idx_preds: {idx_preds}, targets: {targets}", idx_preds=idx_preds, targets=targets)
     correct = jnp.equal(idx_preds, targets)  # (batch_size,)
     # jax.debug.print("correct: {correct}", correct=correct)
     accuracy = jnp.mean(correct)  # ()
     # jax.debug.print("accuracy: {accuracy}", accuracy=accuracy)
-    return accuracy
+    return accuracy, model_states
 
-@partial(jax.jit, static_argnames=("static", "optimizer", "yinit_guess"))
+@partial(jax.jit, static_argnames=("static", "optimizer"))
 def update_step(params, static, optimizer: optax.GradientTransformation, opt_state: Any,
                 xs: jnp.ndarray, targets: jnp.ndarray,
-                yinit_guess: Any = None) -> Tuple[RNNClassifier, Any, jnp.ndarray, Any]:
+                model_states: Dict) -> Tuple[RNNClassifier, Any, jnp.ndarray, Dict]:
     # xs: (batch_size, nsamples, ninputs)
     # targets: (batch_size, noutputs)
-    (loss, new_yinit_guess), grad = \
-        jax.value_and_grad(loss_fn, argnums=0, has_aux=True)(params, static, xs, targets, yinit_guess)
+    (loss, model_states), grad = \
+        jax.value_and_grad(loss_fn, argnums=0, has_aux=True)(params, static, xs, targets, model_states)
     updates, opt_state = optimizer.update(grad, opt_state, params)
     new_params = optax.apply_updates(params, updates)
-    return new_params, opt_state, loss, new_yinit_guess
+    return new_params, opt_state, loss, model_states
 
 def main():
     parser = argparse.ArgumentParser()
@@ -125,6 +124,7 @@ def main():
     # optimizer = optax.adam(learning_rate=args.lr)
     params, static = eqx.partition(model, eqx.is_array)
     opt_state = optimizer.init(params)
+    model_states = eqx.nn.State(model)
 
     # get the summary writer
     summary_writer = SummaryWriter(log_dir=path)
@@ -138,7 +138,8 @@ def main():
             xs = jnp.array(xs.numpy())
             targets = jnp.array(targets.numpy())
             # update step
-            params, opt_state, loss, yinit_guess = update_step(params, static, optimizer, opt_state, xs, targets)
+            params, opt_state, loss, model_states = \
+                update_step(params, static, optimizer, opt_state, xs, targets, model_states)
             step += 1
             summary_writer.add_scalar("train_loss", loss, step)
 
@@ -150,7 +151,7 @@ def main():
             xs = jnp.array(xs.numpy())
             targets = jnp.array(targets.numpy())
             # calculate the accuracy
-            accuracy = calc_accuracy(params, static, xs, targets)
+            accuracy, model_states = calc_accuracy(params, static, xs, targets, model_states)
             val_acc += accuracy * len(targets)
         val_acc /= len(val_dset) * 1.0
 
