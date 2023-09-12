@@ -43,6 +43,7 @@ def rollout(
         # do the same multiple times by reusing the same set of parameters
         out, yinit_guess = model(inputs, y0, yinit_guess)
         # pdb.set_trace()
+        # jax.debug.print("{s}", s=out.shape)
         return out.mean(axis=0), yinit_guess
     else:
         raise NotImplementedError()
@@ -71,7 +72,8 @@ def loss_fn(
     # (nlayer, nchannel, batch_size, nsequence, nstates)
     # TODO replace this with something more elegant
 
-    y0 = yinit_guess[..., 0, :]
+    # remove this line
+    # y0 = yinit_guess[..., 0, :]
 
     # ypred: (batch_size, nclass)
     ypred, yinit_guess = jax.vmap(
@@ -86,7 +88,6 @@ def loss_fn(
 
 @partial(jax.jit, static_argnames=("static", "optimizer", "method"))
 def update_step(
-    # model: eqx.Module,
     params: Any,
     static: Any,
     optimizer: optax.GradientTransformation,
@@ -108,15 +109,10 @@ def update_step(
         argnums=0,
         has_aux=True
     )(params, static, y0, batch, yinit_guess, method)
-    # pdb.set_trace()
     updates, opt_state = optimizer.update(grad, opt_state, params)
-    # pdb.set_trace()
-    params = optax.apply_updates(params, updates)
-    # pdb.set_trace()
+    new_params = optax.apply_updates(params, updates)
     gradnorm = grad_norm(grad)
-    # pdb.set_trace()
-    # model = eqx.combine(params, static)
-    return params, opt_state, loss, accuracy, yinit_guess, gradnorm
+    return new_params, opt_state, loss, accuracy, yinit_guess, gradnorm
 
 
 def main():
@@ -166,8 +162,8 @@ def main():
     # check the path
     logpath = "logs"
     path = os.path.join(logpath, f"version_{args.version}")
-    # if os.path.exists(path):
-    #     raise ValueError(f"Path {path} already exists!")
+    if os.path.exists(path):
+        raise ValueError(f"Path {path} already exists!")
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
@@ -180,24 +176,23 @@ def main():
         nclass=nclass,
         key=key
     )
+    model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
     y0 = jnp.zeros(
-        (nlayer, nchannel, batch_size, int(nstate / nchannel))
+        (nlayer, nchannel, batch_size, int(nstate / nchannel)),
+        dtype=dtype
     )  # (nlayer, nchannel, batch_size, nstates)
     yinit_guess = jnp.zeros(
         (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
+        dtype=dtype
     )  # (nlayer, nchannel, batch_size, nsequence, nstates)
 
     optimizer = optax.chain(
-        optax.clip_by_global_norm(max_norm=.1),
+        optax.clip_by_global_norm(max_norm=1),
         optax.adam(learning_rate=args.lr)
     )
     params, static = eqx.partition(model, eqx.is_array)
     opt_state = optimizer.init(params)
-    print(count_params(params))
-
-    # count1 = count_params(combined_params["params"])
-    # count2 = count_params(combined_params["mlp_params"])
-    # print(count1, count2)
+    print(f"Total parameter count: {count_params(params)}")
 
     # get the summary writer
     summary_writer = SummaryWriter(log_dir=path)
@@ -214,8 +209,8 @@ def main():
             except Exception():
                 pass
             batch = prep_batch(batch, dtype)
-            params, opt_state, loss, accuracy, yinit_guess, gradnorm = update_step(
-                # model=model,
+            # replace yinit_guess with _
+            params, opt_state, loss, accuracy, _, gradnorm = update_step(
                 params=params,
                 static=static,
                 optimizer=optimizer,
@@ -231,23 +226,34 @@ def main():
             summary_writer.add_scalar("gru_gradnorm", gradnorm, step)
             step += 1
 
-        val_loss = 0
-        nval = 0
-        val_acc = 0
-        loop = tqdm(dm.val_dataloader(), total=len(dm.val_dataloader()), leave=False, file=sys.stderr)
-        for i, batch in enumerate(loop):
-            batch = dm.on_before_batch_transfer(batch, i)
-            batch = prep_batch(batch, dtype)
-            loss, (accuracy, _) = loss_fn(
-                params, static, y0, batch, yinit_guess, method
-            )
-            val_loss += loss * len(batch[1])
-            val_acc += accuracy * len(batch[1])
-            nval += len(batch[1])
-        val_loss /= nval
-        val_acc /= nval
-        summary_writer.add_scalar("val_loss", val_loss, step)
-        summary_writer.add_scalar("val_accuracy", val_acc, step)
+        # inference_model = eqx.combine(params, static)
+        # inference_model = eqx.tree_inference(inference_model, value=True)
+        # inference_params, inference_static = eqx.partition(inference_model, eqx.is_array)
+
+        if epoch % 1 == 0:
+            val_loss = 0
+            nval = 0
+            val_acc = 0
+            loop = tqdm(dm.val_dataloader(), total=len(dm.val_dataloader()), leave=False, file=sys.stderr)
+            for i, batch in enumerate(loop):
+                try:
+                    batch = dm.on_before_batch_transfer(batch, i)
+                except Exception():
+                    pass
+                batch = prep_batch(batch, dtype)
+                # loss, (accuracy, _) = loss_fn(
+                #     inference_params, inference_static, y0, batch, yinit_guess, method
+                # )
+                loss, (accuracy, _) = loss_fn(
+                    params, static, y0, batch, yinit_guess, method
+                )
+                val_loss += loss * len(batch[1])
+                val_acc += accuracy * len(batch[1])
+                nval += len(batch[1])
+            val_loss /= nval
+            val_acc /= nval
+            summary_writer.add_scalar("val_loss", val_loss, step)
+            summary_writer.add_scalar("val_accuracy", val_acc, step)
 
 
 if __name__ == "__main__":
