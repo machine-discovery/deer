@@ -1,5 +1,6 @@
 import argparse
 import os
+import dill as pickle
 import sys
 from functools import partial
 from typing import Tuple, Any, Optional, List
@@ -8,7 +9,6 @@ import jax
 import jax.numpy as jnp
 import optax
 import equinox as eqx
-from flax import linen as nn
 from flax import serialization
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
@@ -163,8 +163,8 @@ def main():
     # check the path
     logpath = "logs"
     path = os.path.join(logpath, f"version_{args.version}")
-    if os.path.exists(path):
-        raise ValueError(f"Path {path} already exists!")
+    # if os.path.exists(path):
+    #     raise ValueError(f"Path {path} already exists!")
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
@@ -191,6 +191,8 @@ def main():
         optax.clip_by_global_norm(max_norm=1),
         optax.adam(learning_rate=args.lr)
     )
+    # checkpoint_path = os.path.join(path, "best_model.pkl")
+    # model = eqx.tree_deserialise_leaves(checkpoint_path, model)
     params, static = eqx.partition(model, eqx.is_array)
     opt_state = optimizer.init(params)
     print(f"Total parameter count: {count_params(params)}")
@@ -254,11 +256,9 @@ def main():
             val_loss /= nval
             val_acc /= nval
             if val_acc > best_val_acc:
-                data_to_save = {"params": params, "static": static}
-                bytes_output = serialization.to_bytes(data_to_save)
                 checkpoint_path = os.path.join(path, "best_model.pkl")
-                with open(checkpoint_path, "wb") as file:
-                    file.write(bytes_output)
+                best_model = eqx.combine(params, static)
+                eqx.tree_serialise_leaves(checkpoint_path, best_model)
             summary_writer.add_scalar("val_loss", val_loss, step)
             summary_writer.add_scalar("val_accuracy", val_acc, step)
 
