@@ -9,6 +9,7 @@ import jax.numpy as jnp
 import optax
 import equinox as eqx
 from flax import linen as nn
+from flax import serialization
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
@@ -130,7 +131,6 @@ def main():
     parser.add_argument("--nclass", type=int, default=10)
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
-    parser.add_argument("--ngru", type=int, default=10)
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -144,7 +144,8 @@ def main():
             "aan",
             "sanity_check",
             "eigenworms",
-            "ecg200"
+            "ecg200",
+            "rightwhalecalls"
         ],
     )
     args = parser.parse_args()
@@ -177,23 +178,14 @@ def main():
         key=key
     )
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
-    # y0 = jnp.zeros(
-    #     (nlayer, nchannel, batch_size, int(nstate / nchannel)),
-    #     dtype=dtype
-    # )  # (nlayer, nchannel, batch_size, nstates)
-    # yinit_guess = jnp.zeros(
-    #     (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
-    #     dtype=dtype
-    # )  # (nlayer, nchannel, batch_size, nsequence, nstates)
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
         dtype=dtype
-    )  # (nlayer, nchannel, batch_size, nstates)
+    )  # (batch_size, nstates)
     yinit_guess = jnp.zeros(
         (batch_size, nsequence, int(nstate / nchannel)),
         dtype=dtype
-    )  # (nlayer, nchannel, batch_size, nsequence, nstates)
-
+    )  # (batch_size, nsequence, nstates)
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(max_norm=1),
@@ -238,7 +230,7 @@ def main():
         # inference_model = eqx.combine(params, static)
         # inference_model = eqx.tree_inference(inference_model, value=True)
         # inference_params, inference_static = eqx.partition(inference_model, eqx.is_array)
-
+        best_val_acc = 0
         if epoch % 1 == 0:
             val_loss = 0
             nval = 0
@@ -261,6 +253,12 @@ def main():
                 nval += len(batch[1])
             val_loss /= nval
             val_acc /= nval
+            if val_acc > best_val_acc:
+                data_to_save = {"params": params, "static": static}
+                bytes_output = serialization.to_bytes(data_to_save)
+                checkpoint_path = os.path.join(path, "best_model.pkl")
+                with open(checkpoint_path, "wb") as file:
+                    file.write(bytes_output)
             summary_writer.add_scalar("val_loss", val_loss, step)
             summary_writer.add_scalar("val_accuracy", val_acc, step)
 
