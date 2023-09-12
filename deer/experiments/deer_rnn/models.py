@@ -141,7 +141,7 @@ class MLP(eqx.Module):
             out_size=nout,
             width_size=nstate,
             depth=1,
-            activation=jax.nn.tanh,
+            activation=jax.nn.relu,
             # final_activation=jax.nn.tanh,  # adding --> even smaller gradient
             key=key
         )
@@ -170,10 +170,10 @@ class ScaleGRU(eqx.Module):
         # inputs.shape == (nbatch, ninp)
         assert len(inputs.shape) == len(h0.shape)
 
-        s = jnp.exp(self.log_s)
-        # jax.debug.print("{s}", s=s)
+        s = jnp.exp(jnp.clip(self.log_s, a_min=-10, a_max=10))
         states = vmap_to_shape(self.gru, inputs.shape)(inputs / s, h0)
         states = (states - h0) / s + h0
+        # jax.debug.print("{mean} {std}", mean=states.mean(), std=states.std())
         return states
 
 
@@ -207,7 +207,7 @@ class MultiScaleGRU(eqx.Module):
             ScaleGRU(
                 ninp=nstate,
                 nstate=gru_nstate,
-                scale=10 ** i,
+                scale=10 ** i,  # 10 ** (i / 2),
                 key=keys[int(1 + (nchannel * j) + i)]
             ) for i in range(nchannel)] for j in range(nlayer)
         ]
@@ -216,7 +216,7 @@ class MultiScaleGRU(eqx.Module):
         ]
         assert len(self.scale_grus) == nlayer
         assert len(self.scale_grus[0]) == nchannel
-        assert len(self.mlps) == nlayer
+        # assert len(self.mlps) == nlayer
         print(f"scale_grus random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
         print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
 
@@ -234,14 +234,13 @@ class MultiScaleGRU(eqx.Module):
         def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
             return model(inputs, carry)
 
-        x_from_all_layers = []
-        # TODO there should be a way to vmap the channel
+        # x_from_all_layers = []
         for i in range(self.nlayer):
             inputs = self.norms[i](inputs)
 
             x_from_all_channels = []
-            for ch in range(self.nchannel):
 
+            for ch in range(self.nchannel):
                 x = seq1d(
                     model_func,
                     h0[i][ch],
@@ -249,82 +248,14 @@ class MultiScaleGRU(eqx.Module):
                     self.scale_grus[i][ch],
                     yinit_guess[i][ch]
                 )
-                # think vmap should be removed later??
-                # x = jax.vmap(seq1d, in_axes=(None, 0, 0, None, 0))(
-                #     model_func,
-                #     h0[i][ch],
-                #     inputs,
-                #     None,
-                #     yinit_guess[i][ch]
-                # )
                 x_from_all_channels.append(x)
-            x_from_all_layers.append(jnp.stack(x_from_all_channels))
+
+            # x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
+            # x = x + inputs
             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
             # x = self.dropout(x, key=jax.random.PRNGKey(42))
             x = self.mlps[i](x) + x  # add with norm added in the next loop
             inputs = x
-        yinit_guess = jnp.stack(x_from_all_layers)
+        # yinit_guess = jnp.stack(x_from_all_layers)
         return self.classifier(x), yinit_guess
-
-
-if __name__ == "__main__":
-    # this only works with jax.vmap(seq1d) in MultiScaleGRU
-    ninp = 1
-    nstate = 32
-    nchannel = 4
-    nclass = 2
-    nlayer = 3
-    # model = MultiScaleGRU(
-    #     ninp=ninp,
-    #     nchannel=nchannel,
-    #     nstate=nstate,
-    #     nlayer=nlayer,
-    #     nclass=nclass,
-    #     key=jax.random.PRNGKey(1)
-    # )
-    # mlp = MLP(
-    #     ninp=ninp,
-    #     nstate=nstate,
-    #     nout=nstate,
-    #     key=jax.random.PRNGKey(1)
-    # )
-    # scale_gru = ScaleGRU(
-    #     ninp=nstate,
-    #     nstate=nstate,
-    #     scale=1,
-    #     key=jax.random.PRNGKey(1)
-    # )
-
-    nseq = 69
-    batch_size = 7
-    # carry = jnp.zeros(
-    #     (batch_size, int(nstate / nchannel))
-    # )  # (batch_size, nstates)
-    # inputs = jax.random.normal(
-    #     jax.random.PRNGKey(1),
-    #     (batch_size, nseq, ninp),
-    # )  # (batch_size, nsequence, nstates)
-    # yinit_guess = jax.random.normal(
-    #     jax.random.PRNGKey(1),
-    #     (batch_size, nseq, int(nstate / nchannel)),
-    # )  # (batch_size, nsequence, nstates)
-    # y = model(
-    #     inputs,
-    #     [[carry for _ in range(nchannel)] for _ in range(nlayer)],
-    #     [[yinit_guess for _ in range(nchannel)] for _ in range(nlayer)]
-    # )
-
-    inputs = jnp.ones((batch_size, nseq, ninp))
-    mlp = MLP(
-        ninp=ninp,
-        nstate=nstate,
-        nout=nstate,
-        key=jax.random.PRNGKey(1)
-    )
-    scale_gru = ScaleGRU(
-        ninp=nstate,
-        nstate=nstate,
-        scale=1,
-        key=jax.random.PRNGKey(1)
-    )
