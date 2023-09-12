@@ -77,7 +77,7 @@ def loss_fn(
 
     # ypred: (batch_size, nclass)
     ypred, yinit_guess = jax.vmap(
-        rollout, in_axes=(None, 2, 0, 2, None), out_axes=(0, 2)
+        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0, 2)
     )(model, y0, x, yinit_guess, method)
 
     metrics = compute_metrics(ypred, y)
@@ -177,14 +177,23 @@ def main():
         key=key
     )
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
+    # y0 = jnp.zeros(
+    #     (nlayer, nchannel, batch_size, int(nstate / nchannel)),
+    #     dtype=dtype
+    # )  # (nlayer, nchannel, batch_size, nstates)
+    # yinit_guess = jnp.zeros(
+    #     (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
+    #     dtype=dtype
+    # )  # (nlayer, nchannel, batch_size, nsequence, nstates)
     y0 = jnp.zeros(
-        (nlayer, nchannel, batch_size, int(nstate / nchannel)),
+        (batch_size, int(nstate / nchannel)),
         dtype=dtype
     )  # (nlayer, nchannel, batch_size, nstates)
     yinit_guess = jnp.zeros(
-        (nlayer, nchannel, batch_size, nsequence, int(nstate / nchannel)),
+        (batch_size, nsequence, int(nstate / nchannel)),
         dtype=dtype
     )  # (nlayer, nchannel, batch_size, nsequence, nstates)
+
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(max_norm=1),

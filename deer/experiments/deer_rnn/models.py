@@ -243,10 +243,10 @@ class MultiScaleGRU(eqx.Module):
             for ch in range(self.nchannel):
                 x = seq1d(
                     model_func,
-                    h0[i][ch],
+                    h0,  # h0[i][ch],
                     inputs,
                     self.scale_grus[i][ch],
-                    yinit_guess[i][ch]
+                    yinit_guess,  # yinit_guess[i][ch]
                 )
                 x_from_all_channels.append(x)
 
