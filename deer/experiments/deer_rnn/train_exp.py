@@ -131,6 +131,7 @@ def main():
     parser.add_argument("--nclass", type=int, default=10)
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
+    parser.add_argument("--patience", type=int, default=200)
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -159,6 +160,7 @@ def main():
     nchannel = args.nchannel
     dtype = jnp.float64
     batch_size = args.batch_size
+    patience = args.patience
 
     # check the path
     logpath = "logs"
@@ -255,16 +257,21 @@ def main():
                 nval += len(batch[1])
             val_loss /= nval
             val_acc /= nval
+            summary_writer.add_scalar("val_loss", val_loss, step)
+            summary_writer.add_scalar("val_accuracy", val_acc, step)
             if val_acc > best_val_acc:
+                patience = args.patience
                 best_val_acc = val_acc
                 for f in glob(f"{path}/best_model_epoch_*"):
                     os.remove(f)
                 checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
                 best_model = eqx.combine(params, static)
                 eqx.tree_serialise_leaves(checkpoint_path, best_model)
-            summary_writer.add_scalar("val_loss", val_loss, step)
-            summary_writer.add_scalar("val_accuracy", val_acc, step)
-
+            else:
+                patience -= 1
+                if patience == 0:
+                    print(f"The validation accuracy stopped improving, training ends here at epoch {epoch} and step {step}!")
+                    break
 
 if __name__ == "__main__":
     main()
