@@ -190,7 +190,7 @@ class MultiScaleGRU(eqx.Module):
     dropout_key: prng.PRNGKeyArray
 
     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
-        keycount = 1 + (nchannel + 1) * nlayer + 1
+        keycount = 1 + (nchannel + 1) * nlayer + 1 + 1  # +1 for dropout
         print(f"Keycount: {keycount}")
         keys = jax.random.split(key, keycount)
 
@@ -226,7 +226,7 @@ class MultiScaleGRU(eqx.Module):
 
         self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
         self.dropout = eqx.nn.Dropout(p=0.2)
-        self.dropout_key = jax.random.PRNGKey(42)
+        self.dropout_key = keys[-1]
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
