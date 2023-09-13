@@ -204,6 +204,7 @@ def main():
     step = 0
     dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
     dm.setup()
+    best_val_acc = 0
     for epoch in tqdm(range(args.nepochs), file=sys.stderr):
         loop = tqdm(dm.train_dataloader(), total=len(dm.train_dataloader()), leave=False, file=sys.stderr)
         for i, batch in enumerate(loop):
@@ -232,7 +233,6 @@ def main():
         inference_model = eqx.combine(params, static)
         inference_model = eqx.tree_inference(inference_model, value=True)
         inference_params, inference_static = eqx.partition(inference_model, eqx.is_array)
-        best_val_acc = 0
         if epoch % 1 == 0:
             val_loss = 0
             nval = 0
