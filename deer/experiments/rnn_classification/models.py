@@ -38,6 +38,9 @@ class CellLayer(eqx.Module):
     cell: eqx.Module
     eval_method: str
     cell_type: str
+    state_index: eqx.nn.StateIndex
+    initg_static: Any
+    initg_optimizer: optax.GradientTransformation
 
     def __init__(self, ninputs: int, nhiddens: int, cell_type: str = "gru", eval_method: str = "deer", *,
                  key: jax.random.PRNGKey):
@@ -50,8 +53,26 @@ class CellLayer(eqx.Module):
                 self.cell = eqx.nn.LSTMCell(input_size=ninputs, hidden_size=nhiddens // 2, key=key)
         else:
             raise ValueError(f"Unknown cell: {cell_type}")
+
+        key, *subkey = jax.random.split(key, 2)
+
+        # initialize the optimizer for initg_model
+        self.initg_optimizer = optax.chain(
+            optax.adam(learning_rate=1e-3),
+        )
+
+        def _create_initg_model():
+            return InitGModel(ninputs, nhiddens, key=subkey[0])
+
+        def _create_states(**_):
+            initg_params, _ = eqx.partition(_create_initg_model(), eqx.is_array)
+            opt_state = self.initg_optimizer.init(initg_params)
+            return initg_params, opt_state
+
         self.cell_type = cell_type
         self.eval_method = eval_method
+        self.state_index = eqx.nn.StateIndex(_create_states)
+        _, self.initg_static = eqx.partition(_create_initg_model(), eqx.is_array)
 
     def __call__(self, xs: jnp.ndarray, model_states: Dict) \
             -> Tuple[jnp.ndarray, Dict]:
@@ -60,6 +81,9 @@ class CellLayer(eqx.Module):
 
         # get the initial guess
         yinit_guess = None
+        initg_params, initg_opt_state = model_states.get(self.state_index)
+        initg_model = eqx.combine(initg_params, self.initg_static)
+        yinit_guess = jax.vmap(initg_model)(xs)  # (batch_size, nsamples, nhiddens)
 
         # initialize the states
         batch_size = xs.shape[0]
@@ -86,6 +110,11 @@ class CellLayer(eqx.Module):
                 outputs = jnp.concatenate(outputs, axis=-1)
         else:
             raise ValueError(f"Unknown eval_method: {self.eval_method}")
+
+        # update the states by applying one update states for the initg_model
+        initg_params, initg_opt_state = \
+            initg_update_step(initg_params, self.initg_static, xs, outputs, self.initg_optimizer, initg_opt_state)
+        model_states = model_states.set(self.state_index, (initg_params, initg_opt_state))
         return outputs, model_states
 
 class RNNClassifier(eqx.Module):
@@ -126,14 +155,112 @@ class RNNClassifier(eqx.Module):
             # else:
             #     xs = xs_new
             xs = xs_new
-            xs = jax.vmap(self.norms[i])(xs)
+            xs = jax.vmap(jax.vmap(self.norms[i]))(xs)
             # xs = xs[::2]
-        # xs: (nsamples, nhiddens)
-        xlast = jnp.mean(xs, axis=0)  # (nhiddens,)
-        # xlast = xs[-1]  # (nhiddens,)
-        xs = self.mlp(xlast)  # (noutputs,)
-        return xs, model_states  # [nlayers] + (nsamples, nhiddens)
+        # xs: (batch_size, nsamples, nhiddens)
+        xlast = jnp.mean(xs, axis=-2)  # (batch_size, nhiddens)
+        xs = jax.vmap(self.mlp)(xlast)  # (batch_size, noutputs)
+        return xs, model_states  # [nlayers] + (batch_size, nsamples, nhiddens)
 
+
+class InitGModel(eqx.Module):
+    model: eqx.Module
+
+    def __init__(self, ninputs: int, noutputs: int, nhiddens: int = 64, *, key: jax.random.PRNGKey):
+        subkey = jax.random.split(key, 5)
+        self.model = eqx.nn.Sequential([
+            VMapped(eqx.nn.MLP(ninputs, nhiddens, nhiddens, depth=1, key=subkey[0])),
+            S4D(nhiddens, key=subkey[1]),
+            VMapped(eqx.nn.MLP(nhiddens, nhiddens, nhiddens, depth=1, key=subkey[2])),
+            S4D(nhiddens, key=subkey[3]),
+            VMapped(eqx.nn.MLP(nhiddens, noutputs, nhiddens, depth=1, key=subkey[4])),
+        ])
+
+    def __call__(self, xs: jnp.ndarray, *, key: Optional[jax.random.PRNGKey] = None) -> jnp.ndarray:
+        # xs: (nsamples, ninputs)
+        # outputs: (nsamples, noutputs)
+        return self.model(xs)
+
+class VMapped(eqx.Module):
+    model: eqx.Module
+    n: int
+
+    def __init__(self, model: eqx.Module, n: int = 1):
+        self.model = model
+        self.n = n
+
+    def __call__(self, xs: jnp.ndarray, *, key: Optional[jax.random.PRNGKey] = None) -> jnp.ndarray:
+        model = self.model
+        for i in range(self.n):
+            model = jax.vmap(model)
+        y = model(xs, key=key)
+        return y
+
+class S4D(eqx.Module):
+    log_dt: jnp.ndarray
+    C: jnp.ndarray
+    D: jnp.ndarray
+    log_A_real: jnp.ndarray
+    A_imag: jnp.ndarray
+
+    def __init__(self, d_model: int, N: int = 64, dt_min: float = 1e-3, dt_max: float = 1e-1, *,
+                 key: jax.random.PRNGKey):
+        subkey = jax.random.split(key, 3)
+        H = d_model
+        self.log_dt = jax.random.uniform(subkey[0], (H,)) * (
+            math.log(dt_max) - math.log(dt_min)) + math.log(dt_min)
+        cdtype = jnp.complex64 if self.log_dt == jnp.float32 else jnp.complex128
+        self.C = jax.random.normal(subkey[1], (H, N // 2), dtype=cdtype)  # (H, N // 2)
+
+        # obtain the A matrix
+        self.log_A_real = jnp.log(0.5 * jnp.ones((H, N // 2)))
+        self.A_imag = math.pi * jnp.repeat(jnp.reshape(jnp.arange(N // 2), (1, -1)), H, axis=0)
+
+        # get the D matrix for the skip connection
+        self.D = jax.random.normal(subkey[2], (H, 1))  # (H, 1)
+
+    def __call__(self, xs: jnp.ndarray, *, key: Optional[jax.random.PRNGKey] = None) -> jnp.ndarray:
+        # xs: (nsamples, H)
+        # outputs: (nsamples, H)
+        L = xs.shape[-2]
+
+        # obtain the fft kernel
+        # first, materialize the parameters
+        dt = jnp.exp(self.log_dt)  # (H,)
+        A = -jnp.exp(self.log_A_real) + 1j * self.A_imag  # (H, N // 2)
+
+        # vandermonde multiplication
+        dtA = A * dt[..., None]  # (H, N // 2)
+        K = dtA[..., None] * jnp.arange(L)  # (H, N // 2, nsamples)
+        C = self.C * (jnp.exp(dtA) - 1.0) / A  # (H, N // 2)
+        kernel = 2 * jnp.einsum("...hn, ...hnl -> ...hl", C, jnp.exp(K)).real  # (H, nsamples)
+
+        # convolution with the kernel
+        xs2 = jnp.swapaxes(xs, -2, -1)  # (H, nsamples)
+        k_f = jnp.fft.rfft(kernel, n=2 * L)
+        u_f = jnp.fft.rfft(xs2, n=2 * L)
+        y = jnp.fft.irfft(u_f * k_f, n=2 * L)[..., :L]  # (H, nsamples)
+
+        # skip connection
+        y = y + xs2 * self.D  # (H, nsamples)
+        y = jnp.swapaxes(y, -2, -1)  # (nsamples, H)
+        return y
+
+def initg_update_step(initg_params, initg_static, xs, outputs, initg_optimizer, initg_opt_state):
+    grad = jax.grad(initg_loss)(initg_params, initg_static, xs, outputs)
+    updates, initg_opt_state = initg_optimizer.update(grad, initg_opt_state, initg_params)
+    initg_params = optax.apply_updates(initg_params, updates)
+    initg_params = jax.lax.stop_gradient(initg_params)
+    initg_opt_state = jax.lax.stop_gradient(initg_opt_state)
+    return initg_params, initg_opt_state
+
+def initg_loss(initg_params, initg_static, xs, outputs):
+    # xs: (batch_size, nsamples, ninputs)
+    # outputs: ()
+    initg_model = eqx.combine(initg_params, initg_static)
+    preds = jax.vmap(initg_model)(xs)
+    loss = jnp.mean((preds - outputs) ** 2)  # ()
+    return loss
 
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
