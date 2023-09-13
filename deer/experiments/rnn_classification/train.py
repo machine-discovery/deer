@@ -21,7 +21,9 @@ def loss_fn(params, static, xs: jnp.ndarray, targets: jnp.ndarray, model_states:
     # targets: (batch_size,) int
     model = eqx.combine(params, static)
     # ys: (batch_size, noutputs)
-    ys, model_states = jax.vmap(model, in_axes=(0, None))(xs, model_states)
+    ys, model_states = model(xs, model_states)
+    # ys, model_states = \
+    #     jax.vmap(model, in_axes=(0, None), out_axes=(0, None), axis_name=BATCH_AXIS_NAME)(xs, model_states)
     loss = jax.vmap(optax.softmax_cross_entropy_with_integer_labels)(ys, targets)  # (batch_size,)
     # jax.debug.print("ys: {ys}", ys=jnp.argmax(ys, axis=-1))
     # jax.debug.print("targets: {targets}", targets=targets)
@@ -35,7 +37,9 @@ def calc_accuracy(params, static, xs: jnp.ndarray, targets: jnp.ndarray, model_s
         -> Tuple[jnp.ndarray, Dict]:
     # preds: (batch_size, noutputs), new_yinit_guess: [nlayers] + (batch_size, nsamples, nhiddens)
     model = eqx.combine(params, static)
-    preds, model_states = jax.vmap(model, in_axes=(0, None))(xs, model_states)
+    preds, model_states = model(xs, model_states)
+    # preds, model_states = \
+    #     jax.vmap(model, in_axes=(0, None), out_axes=(0, None), axis_name=BATCH_AXIS_NAME)(xs, model_states)
     idx_preds = jnp.argmax(preds, axis=-1)  # (batch_size,)
     # jax.debug.print("idx_preds: {idx_preds}, targets: {targets}", idx_preds=idx_preds, targets=targets)
     correct = jnp.equal(idx_preds, targets)  # (batch_size,)
