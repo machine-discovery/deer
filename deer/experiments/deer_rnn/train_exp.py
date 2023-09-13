@@ -4,7 +4,7 @@ import dill as pickle
 import sys
 from functools import partial
 from typing import Tuple, Any, Optional, List
-
+from glob import glob
 import jax
 import jax.numpy as jnp
 import optax
@@ -256,7 +256,10 @@ def main():
             val_loss /= nval
             val_acc /= nval
             if val_acc > best_val_acc:
-                checkpoint_path = os.path.join(path, "best_model.pkl")
+                best_val_acc = val_acc
+                for f in glob(f"{path}/best_model_epoch_*"):
+                    os.remove(f)
+                checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
                 best_model = eqx.combine(params, static)
                 eqx.tree_serialise_leaves(checkpoint_path, best_model)
             summary_writer.add_scalar("val_loss", val_loss, step)
