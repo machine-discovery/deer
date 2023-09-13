@@ -229,9 +229,9 @@ def main():
             summary_writer.add_scalar("gru_gradnorm", gradnorm, step)
             step += 1
 
-        # inference_model = eqx.combine(params, static)
-        # inference_model = eqx.tree_inference(inference_model, value=True)
-        # inference_params, inference_static = eqx.partition(inference_model, eqx.is_array)
+        inference_model = eqx.combine(params, static)
+        inference_model = eqx.tree_inference(inference_model, value=True)
+        inference_params, inference_static = eqx.partition(inference_model, eqx.is_array)
         best_val_acc = 0
         if epoch % 1 == 0:
             val_loss = 0
@@ -244,12 +244,12 @@ def main():
                 except Exception():
                     pass
                 batch = prep_batch(batch, dtype)
-                # loss, (accuracy, _) = loss_fn(
-                #     inference_params, inference_static, y0, batch, yinit_guess, method
-                # )
                 loss, (accuracy, _) = loss_fn(
-                    params, static, y0, batch, yinit_guess, method
+                    inference_params, inference_static, y0, batch, yinit_guess, method
                 )
+                # loss, (accuracy, _) = loss_fn(
+                #     params, static, y0, batch, yinit_guess, method
+                # )
                 val_loss += loss * len(batch[1])
                 val_acc += accuracy * len(batch[1])
                 nval += len(batch[1])
