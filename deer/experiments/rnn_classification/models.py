@@ -1,11 +1,15 @@
-from typing import Callable, Optional, List, Tuple, Dict
+from typing import Callable, Optional, List, Tuple, Dict, Any
+import math
 from functools import partial
 import jax
 import jax.numpy as jnp
+import optax
 import equinox as eqx
 import numpy as np
 from deer.seq1d import seq1d
 
+
+BATCH_AXIS_NAME = "batch"
 
 def clscall(module: eqx.Module):
     return module.__class__.__call__
@@ -51,26 +55,30 @@ class CellLayer(eqx.Module):
 
     def __call__(self, xs: jnp.ndarray, model_states: Dict) \
             -> Tuple[jnp.ndarray, Dict]:
-        # xs: (nsamples, ninputs)
-        # outputs: (nsamples, nhiddens)
+        # xs: (batch_size, nsamples, ninputs)
+        # outputs: (batch_size, nsamples, nhiddens)
+
+        # get the initial guess
         yinit_guess = None
 
         # initialize the states
+        batch_size = xs.shape[0]
         if self.cell_type == "gru":
-            init_state = jnp.zeros((self.cell.hidden_size,))
+            init_state = jnp.zeros((batch_size, self.cell.hidden_size))
         elif self.cell_type == "lstm":
             if self.eval_method == "deer":
-                init_state = jnp.zeros((self.cell.hidden_size,))
+                init_state = jnp.zeros((batch_size, self.cell.hidden_size))
             else:
-                init_state = (jnp.zeros((self.cell.hidden_size,)),) * 2
+                init_state = (jnp.zeros((batch_size, self.cell.hidden_size)),) * 2
         else:
             raise RuntimeError(f"Should not be here")
 
         if self.eval_method == "deer":
             cell_fun = lambda state, xinput, cell: clscall(cell)(cell, xinput, state)
-            outputs = seq1d(cell_fun, init_state, xs, self.cell, yinit_guess=yinit_guess)
+            # outputs: (batch_size, nsamples, noutputs)
+            outputs = jax.vmap(seq1d, in_axes=(None, 0, 0, None, 0))(cell_fun, init_state, xs, self.cell, yinit_guess)
         elif self.eval_method == "sequential":
-            scan_fun = lambda state, xinput: (self.cell(xinput, state),) * 2
+            scan_fun = lambda state, xinput: (jax.vmap(self.cell)(xinput, state),) * 2
             final_state, outputs = jax.lax.scan(scan_fun, init_state, xs)
             if self.cell_type == "lstm":
                 # outputs is a tuple of (hidden_state, cell_state), we need to concatenate it
@@ -107,10 +115,10 @@ class RNNClassifier(eqx.Module):
 
     def __call__(self, xs: jnp.ndarray, model_states: Dict) \
             -> Tuple[jnp.ndarray, Dict]:
-        # xs: (nsamples, ninputs)
-        # outputs: (noutputs,)
+        # xs: (batch_size, nsamples, ninputs)
+        # outputs: (batch_size, noutputs)
 
-        xs = self.embedding(xs)  # (nsamples, ninputs)
+        xs = jax.vmap(self.embedding)(xs)  # (batch_size, nsamples, ninputs)
         for i, cell in enumerate(self.cells):
             xs_new, model_states = cell(xs, model_states)
             # if i != 0:
