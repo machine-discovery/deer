@@ -174,6 +174,7 @@ class ScaleGRU(eqx.Module):
         states = vmap_to_shape(self.gru, inputs.shape)(inputs / s, h0)
         states = (states - h0) / s + h0
         # jax.debug.print("{mean} {std}", mean=states.mean(), std=states.std())
+        # print(states.mean(), states.std())
         return states
 
 
@@ -185,8 +186,8 @@ class MultiScaleGRU(eqx.Module):
     mlps: List[MLP]
     classifier: MLP
     norms: List[eqx.nn.LayerNorm]
-    # dropout: eqx.nn.Dropout
-    # dropout_key: prng.PRNGKeyArray
+    dropout: eqx.nn.Dropout
+    dropout_key: prng.PRNGKeyArray
 
     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
         keycount = 1 + (nchannel + 1) * nlayer + 1
@@ -224,8 +225,8 @@ class MultiScaleGRU(eqx.Module):
         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
         self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
-        # self.dropout = eqx.nn.Dropout(p=0.2)
-        # self.dropout_key = jax.random.PRNGKey(42)
+        self.dropout = eqx.nn.Dropout(p=0.2)
+        self.dropout_key = jax.random.PRNGKey(42)
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
@@ -249,6 +250,14 @@ class MultiScaleGRU(eqx.Module):
                     yinit_guess,  # yinit_guess[i][ch]
                 )
                 x_from_all_channels.append(x)
+                # pdb.set_trace()
+                # print(i, ch)
+                # print(inputs.mean().val.primal, inputs.std().val.primal)
+                # print(x.mean().val.primal, x.std().val.primal)
+                # print("")
+                # pdb.set_trace()
+                # jax.debug.print("{mean} {std}", mean=x.mean(), std=x.std())
+                # pdb.set_trace()
 
             # x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
