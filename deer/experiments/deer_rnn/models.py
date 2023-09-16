@@ -263,7 +263,112 @@ class MultiScaleGRU(eqx.Module):
             x = jnp.concatenate(x_from_all_channels, axis=-1)
             # x = x + inputs
             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
-            # x = self.dropout(x, key=jax.random.PRNGKey(42))
+            # x = self.dropout(x, key=self.dropout_key.astype(jnp.uint32))
+            x = self.mlps[i](x) + x  # add with norm added in the next loop
+            inputs = x
+        # yinit_guess = jnp.stack(x_from_all_layers)
+        return self.classifier(x), yinit_guess
+
+
+class GRU(eqx.Module):
+    # check if everything defined here is meant to be trainable
+    gru: eqx.Module
+
+    def __init__(self, ninp: int, nstate: int, scale: float, key: prng.PRNGKeyArray):
+        self.gru = eqx.nn.GRUCell(
+            input_size=ninp,
+            hidden_size=nstate,
+            key=key
+        )
+        self.gru = custom_gru(self.gru, key)
+
+    def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        # h0.shape == (nbatch, nstate)
+        # inputs.shape == (nbatch, ninp)
+        assert len(inputs.shape) == len(h0.shape)
+
+        states = vmap_to_shape(self.gru, inputs.shape)(inputs, h0)
+        return states
+
+
+class SingleScaleGRU(eqx.Module):
+    nchannel: int
+    nlayer: int
+    encoder: MLP
+    grus: List[List[ScaleGRU]]
+    mlps: List[MLP]
+    classifier: MLP
+    norms: List[eqx.nn.LayerNorm]
+    dropout: eqx.nn.Dropout
+    dropout_key: prng.PRNGKeyArray
+
+    def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
+        keycount = 1 + (nchannel + 1) * nlayer + 1 + 1  # +1 for dropout
+        print(f"Keycount: {keycount}")
+        keys = jax.random.split(key, keycount)
+
+        self.nchannel = nchannel
+        self.nlayer = nlayer
+
+        assert nstate % nchannel == 0
+        gru_nstate = int(nstate / nchannel)
+
+        # encode inputs (or rather, project) to have nstates in the feature dimension
+        self.encoder = MLP(ninp=ninp, nstate=nstate, nout=nstate, key=keys[0])
+
+        # nlayers of (scale_gru + mlp) pair
+        self.grus = [[
+            GRU(
+                ninp=nstate,
+                nstate=gru_nstate,
+                scale=10 ** i,  # 10 ** (i / 2),
+                key=keys[int(1 + (nchannel * j) + i)]
+            ) for i in range(nchannel)] for j in range(nlayer)
+        ]
+        self.mlps = [
+            MLP(ninp=nstate, nstate=nstate, nout=nstate, key=keys[int(i + 1 + nchannel * nlayer)]) for i in range(nlayer)
+        ]
+        assert len(self.grus) == nlayer
+        assert len(self.grus[0]) == nchannel
+        # assert len(self.mlps) == nlayer
+        print(f"scale_grus random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
+        print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
+
+        # project nstates in the feature dimension to nclasses for classification
+        self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
+
+        self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
+        self.dropout = eqx.nn.Dropout(p=0.2)
+        self.dropout_key = keys[-1]
+
+    def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
+        # encode (or rather, project) the inputs
+        inputs = self.encoder(inputs)
+
+        def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
+            return model(inputs, carry)
+
+        # x_from_all_layers = []
+        for i in range(self.nlayer):
+            inputs = self.norms[i](inputs)
+
+            x_from_all_channels = []
+
+            for ch in range(self.nchannel):
+                x = seq1d(
+                    model_func,
+                    h0,  # h0[i][ch],
+                    inputs,
+                    self.grus[i][ch],
+                    yinit_guess,  # yinit_guess[i][ch]
+                )
+                x_from_all_channels.append(x)
+
+            # x_from_all_layers.append(jnp.stack(x_from_all_channels))
+            x = jnp.concatenate(x_from_all_channels, axis=-1)
+            # x = x + inputs
+            x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
+            # x = self.dropout(x, key=self.dropout_key.astype(jnp.uint32))
             x = self.mlps[i](x) + x  # add with norm added in the next loop
             inputs = x
         # yinit_guess = jnp.stack(x_from_all_layers)
