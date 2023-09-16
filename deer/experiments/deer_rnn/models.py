@@ -1,77 +1,13 @@
-import functools
 from typing import Any, List, Tuple, Callable, Sequence, Optional
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-from jax.nn.initializers import glorot_uniform, xavier_uniform
-import equinox as eqx
-from flax import linen as nn
 from jax._src import prng
 
 from deer.seq1d import seq1d
 
 import pdb
-
-
-def he_uniform(key, shape, dtype):
-    fan_in = shape[-1]
-    bound = jnp.sqrt(6 / fan_in)
-    return jax.random.uniform(key, shape, dtype, minval=-bound, maxval=bound)
-
-
-def _uniform(key, shape, dtype):
-    fan_in = shape[-1]
-    bound = jnp.sqrt(1 / fan_in)
-    return jax.random.uniform(key, shape, dtype, minval=-bound, maxval=bound)
-
-
-class TmpScaleGRU(nn.Module):
-    nhidden: int
-    dtype: Any
-    scale: float
-
-    def scaled_initializers(self, scale: float):
-        def init_fn(key, shape):
-            return jnp.log(jnp.ones(shape) * scale)
-        return init_fn
-
-    def setup(self):
-        self.gru = nn.GRUCell(
-            features=self.nhidden,
-            dtype=self.dtype,
-            param_dtype=self.dtype,
-            # kernel_init=_uniform,
-            # recurrent_kernel_init=_uniform,
-        )
-        self.log_s = self.param("log_s", self.scaled_initializers(self.scale), ())
-
-    def initialize_carry(self, batch_size):
-        return jnp.ones((batch_size, self.nhidden))
-
-    @nn.compact
-    def __call__(self, h0: jnp.ndarray, inputs: jnp.ndarray):
-        # h0.shape == (nbatch, nstates)
-        # inputs.shape == (nbatch, ninp)
-        s = jnp.exp(self.log_s)
-        states, _ = self.gru(h0, inputs / s)
-        states = (states - h0) / s + h0
-        return states, states
-
-
-class MLP1(nn.Module):
-    nstates: int
-    nout: int
-    dtype: Any
-
-    @nn.compact
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=he_uniform)(x)
-        x = nn.tanh(x)
-        x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=he_uniform)(x)
-        # x = nn.Dense(self.nstates, dtype=self.dtype, kernel_init=_uniform)(x)
-        # x = nn.tanh(x)
-        # x = nn.Dense(self.nout, dtype=self.dtype, kernel_init=_uniform)(x)
-        return x
 
 
 def vmap_to_shape(func: Callable, shape: Sequence[int]):
