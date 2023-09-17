@@ -14,7 +14,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
-from models import MultiScaleGRU
+from models import MultiScaleGRU, SingleScaleGRU
 from deer.seq1d import seq1d
 import pdb
 
@@ -132,6 +132,7 @@ def main():
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
+    parser.add_argument("--precision", type=int, default=32)
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -158,7 +159,7 @@ def main():
     nclass = args.nclass
     nlayer = args.nlayer
     nchannel = args.nchannel
-    dtype = jnp.float64
+    dtype = jnp.float32
     batch_size = args.batch_size
     patience = args.patience
 
@@ -179,6 +180,14 @@ def main():
         nclass=nclass,
         key=key
     )
+    # model = SingleScaleGRU(
+    #     ninp=ninp,
+    #     nchannel=nchannel,
+    #     nstate=nstate,
+    #     nlayer=nlayer,
+    #     nclass=nclass,
+    #     key=key
+    # )
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
