@@ -159,9 +159,15 @@ def main():
     nclass = args.nclass
     nlayer = args.nlayer
     nchannel = args.nchannel
-    dtype = jnp.float32
     batch_size = args.batch_size
     patience = args.patience
+
+    if args.precision == 32:
+        dtype = jnp.float32
+    elif args.precision == 64:
+        dtype = jnp.float64
+    else:
+        raise ValueError("Only 32 or 64 accepted")
 
     # check the path
     logpath = "logs"
@@ -172,22 +178,26 @@ def main():
 
     # set up the model and optimizer
     key = jax.random.PRNGKey(args.seed)
-    model = MultiScaleGRU(
-        ninp=ninp,
-        nchannel=nchannel,
-        nstate=nstate,
-        nlayer=nlayer,
-        nclass=nclass,
-        key=key
-    )
-    # model = SingleScaleGRU(
-    #     ninp=ninp,
-    #     nchannel=nchannel,
-    #     nstate=nstate,
-    #     nlayer=nlayer,
-    #     nclass=nclass,
-    #     key=key
-    # )
+    if nchannel > 1:
+        model = MultiScaleGRU(
+            ninp=ninp,
+            nchannel=nchannel,
+            nstate=nstate,
+            nlayer=nlayer,
+            nclass=nclass,
+            key=key
+        )
+    elif nchannel == 1:
+        model = SingleScaleGRU(
+            ninp=ninp,
+            nchannel=nchannel,
+            nstate=nstate,
+            nlayer=nlayer,
+            nclass=nclass,
+            key=key
+        )
+    else:
+        raise ValueError("nchannnel must be a positive integer")
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
