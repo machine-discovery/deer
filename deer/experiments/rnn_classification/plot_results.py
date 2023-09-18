@@ -23,11 +23,11 @@ def smooth(scalars: list[float], weight: float) -> list[float]:
     return smoothed
 
 def main():
-    smooth_params = 0.9
-    fast_result_fname = os.path.join("results", "run-version_10-tag-val_loss.csv")
-    slow_result_fname = os.path.join("results", "run-version_11-tag-val_loss.csv")
+    smooth_params = 0.0
+    fast_result_fname = os.path.join("results", "run-version_27-tag-val_accuracy.csv")
+    slow_result_fname = os.path.join("results", "run-version_28-tag-val_accuracy.csv")
     fast_label = "DEER method"
-    slow_label = "RK45 method"
+    slow_label = "Sequential method"
 
     # load the data
     fast_result = np.loadtxt(fast_result_fname, delimiter=",", skiprows=1)
@@ -80,14 +80,14 @@ def main():
         arrowprops=dict(arrowstyle="->", color="C2", linewidth=2),
     )
     # add a text "nx faster-" underneath the middle part of the arrow
-    arrow_x = (slow_rel_time[-1] + fast_rel_time[-1]) / 2
-    arrow_y = fast_smooth[-1] / 1.3
+    arrow_x = (0.14 * slow_rel_time[-1] + 0.86 * fast_rel_time[-1])
+    arrow_y = fast_smooth[-1] / 1.01
     naccel = slow_rel_time[-1] / fast_rel_time[-1]
-    plt.text(arrow_x, arrow_y, "%dx faster" % np.round(naccel), va="top", ha="center", backgroundcolor="w", fontsize=12)
+    plt.text(arrow_x, arrow_y, "%dx faster" % np.round(naccel), va="top", ha="center", backgroundcolor=(1.0, 1.0, 1.0, 0.0), fontsize=12)
     plt.xticks(fontsize=tick_fontsize)
     plt.yticks(fontsize=tick_fontsize)
-    plt.xlabel("Hours\n(a)", fontsize=label_fontsize)
-    plt.ylabel("Validation loss", fontsize=label_fontsize)
+    plt.xlabel("Hours\n(c)", fontsize=label_fontsize)
+    plt.ylabel("Validation accuracy", fontsize=label_fontsize)
 
     plt.subplot(1, 2, 2)
     plt.plot(fast_step, fast_raw, 'C0', alpha=alpha)
@@ -95,13 +95,13 @@ def main():
     plt.plot(fast_step, fast_smooth, 'C0', label=fast_label)
     plt.plot(slow_step, slow_smooth, 'C1', label=slow_label)
     plt.gca().set_yscale("log")
-    plt.xlabel(r"Training steps ($\times 10^3$)" + "\n(b)", fontsize=label_fontsize)
+    plt.xlabel(r"Training steps ($\times 10^3$)" + "\n(d)", fontsize=label_fontsize)
     plt.legend(fontsize=legend_fontsize)
     plt.xticks(fontsize=tick_fontsize)
     plt.yticks(fontsize=tick_fontsize)
 
     plt.tight_layout()
-    plt.savefig("ode_hnn_train_comparison.png")
+    plt.savefig("rnn_train_comparison.png")
     plt.close()
 
 if __name__ == "__main__":
