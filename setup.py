@@ -15,8 +15,8 @@ with open(verfile, "r") as fp:
 setup(
     name=module_name,
     version=version["get_version"](),
-    description='Differential equation solvers',
-    url='https://github.com/mfkasim1/qpert/',
+    description='Parallelizing sequential models',
+    url='https://github.com/mfkasim1/deer/',
     author='mfkasim1',
     author_email='firman.kasim@gmail.com',
     license='Commercial',
