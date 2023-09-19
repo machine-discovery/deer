@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 batch_size = 16
-# fname = "fwd-speedup-report.txt"
-fname = "report-v100-16.txt"
+gpu_type = "v100"
+fname = f"report-{gpu_type}-{batch_size}.txt"
 nhs = [1, 2, 4, 8, 16, 32, 64]
 nsequences = [1000, 3000, 10000, 30000, 100000, 300000, 1000000]
 nseeds = 5
@@ -32,7 +32,7 @@ plt.gca().hlines(1.0, -width, len(nsequences) - 1 + (len(nhs) - 1) * width, colo
 plt.xticks(np.arange(len(nsequences)) + ((len(nhs) - 1) / 2 * width), nsequences_labels, fontsize=12)
 plt.xlabel("Sequence length", fontsize=14)
 plt.ylabel("Speed up", fontsize=14)
-plt.title(f"Speed up of DEER GRU over sequential GRU with batch size = {batch_size}", fontsize=16)
+plt.title(f"Speed up of DEER GRU over sequential GRU (forward) with batch size = {batch_size}", fontsize=16)
 plt.gca().set_yscale("log")
 plt.grid()
 plt.yticks(fontsize=12)
