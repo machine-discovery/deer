@@ -13,8 +13,9 @@ from flax import linen as nn
 import optax
 import numpy as np
 import scipy.integrate
-from deer.seq1d import solve_ivp
+from deer.seq1d import solve_ivp, seq1d
 from PIL import Image
+import pdb
 
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
