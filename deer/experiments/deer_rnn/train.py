@@ -1,21 +1,20 @@
 import argparse
 import os
-import dill as pickle
 import sys
 from functools import partial
-from typing import Tuple, Any, Optional, List
+from typing import Tuple, Any, List
 from glob import glob
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
-import equinox as eqx
-from flax import serialization
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
 from models import MultiScaleGRU, SingleScaleGRU
-from deer.seq1d import seq1d
+
 import pdb
 
 # # run on cpu
@@ -133,6 +132,8 @@ def main():
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
     parser.add_argument("--precision", type=int, default=32)
+    parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
+
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -161,6 +162,7 @@ def main():
     nchannel = args.nchannel
     batch_size = args.batch_size
     patience = args.patience
+    use_scan = args.use_scan
 
     if args.precision == 32:
         dtype = jnp.float32
@@ -168,6 +170,8 @@ def main():
         dtype = jnp.float64
     else:
         raise ValueError("Only 32 or 64 accepted")
+    print(f"dtype is {dtype}")
+    print(f"use_scan is {use_scan}")
 
     # check the path
     logpath = "logs"
@@ -185,7 +189,8 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
+            use_scan=use_scan
         )
     elif nchannel == 1:
         model = SingleScaleGRU(
@@ -194,7 +199,8 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
+            use_scan=use_scan
         )
     else:
         raise ValueError("nchannnel must be a positive integer")
@@ -291,6 +297,7 @@ def main():
                 if patience == 0:
                     print(f"The validation accuracy stopped improving, training ends here at epoch {epoch} and step {step}!")
                     break
+
 
 if __name__ == "__main__":
     main()
