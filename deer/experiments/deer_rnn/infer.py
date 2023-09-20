@@ -132,6 +132,8 @@ def main():
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
     parser.add_argument("--precision", type=int, default=32)
+    parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
+
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -159,6 +161,7 @@ def main():
     nlayer = args.nlayer
     nchannel = args.nchannel
     batch_size = args.batch_size
+    use_scan = args.use_scan
 
     if args.precision == 32:
         dtype = jnp.float32
@@ -181,7 +184,7 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
         )
     elif nchannel == 1:
         model = SingleScaleGRU(
@@ -190,7 +193,8 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
+            use_scan=use_scan
         )
     else:
         raise ValueError("nchannnel must be a positive integer")
