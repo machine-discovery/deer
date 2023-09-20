@@ -8,7 +8,6 @@ import jax
 import jax.numpy as jnp
 import flax.linen
 from deer.seq1d import seq1d
-import pdb
 
 # jax.config.update('jax_platform_name', 'cpu')
 jax.config.update('jax_enable_x64', True)
@@ -39,7 +38,6 @@ def benchmark_seq1d_gru(
     inputs = jax.random.normal(subkey2, (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
     labels = jax.random.normal(subkey3, (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
     params = gru.init(key, carry, inputs[0])
-
 
     def func1(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any, labels: jnp.ndarray) -> jnp.ndarray:
         carry, outputs = jax.lax.scan(partial(gru.apply, params), carry, inputs)
@@ -155,7 +153,7 @@ if __name__ == "__main__":
             print("nh:", nh, "nsequence:", nsequence, "seed:", seed)
             try:
                 benchmark_seq1d_gru(nh=nh, nsequence=nsequence, seed=seed, batch_size=batch_size)
-            except:
+            except Exception:
                 print("Fail")
             print("--------")
     # for (nh, nsequence) in itertools.product([2], [1000]):

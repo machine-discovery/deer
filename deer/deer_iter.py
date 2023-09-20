@@ -2,6 +2,9 @@ from typing import Callable, Any, Optional, Tuple, List
 from functools import partial
 import jax
 import jax.numpy as jnp
+import pdb
+import flax.linen as nn
+
 
 @partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9))
 def deer_iteration(
@@ -94,9 +97,12 @@ def deer_iteration_helper(
         # gt_ is not used, but it is needed to return at the end of scan iteration
         # yt: (nsamples, ny)
         ytparams = shifter_func(yt, shifter_func_params)
+        # pdb.set_trace()
         gts = [-gt for gt in jacfunc(ytparams, xinput, params)]  # [p_num] + (nsamples, ny, ny)
         # rhs: (nsamples, ny)
-        rhs = func2(ytparams, xinput, params)
+        # pdb.set_trace()
+        rhs = func2(ytparams, xinput, params)  # (carry, input, params) see train.py L41
+        # pdb.set_trace()
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
@@ -117,6 +123,7 @@ def deer_iteration_helper(
     iiter = jnp.array(0, dtype=jnp.int32)
     err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
+    # pdb.set_trace()
     return yt, gts, func2
 
 def deer_iteration_eval(

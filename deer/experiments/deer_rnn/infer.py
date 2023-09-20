@@ -1,22 +1,21 @@
 import argparse
 import os
-import dill as pickle
 import sys
 from functools import partial
-from typing import Tuple, Any, Optional, List
+from typing import Tuple, Any, List
 from glob import glob
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
-import equinox as eqx
-from flax import serialization
 from tqdm import tqdm
-from tensorboardX import SummaryWriter
 
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
 from models import MultiScaleGRU, SingleScaleGRU
-from deer.seq1d import seq1d
+
 import pdb
+
 
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
@@ -132,6 +131,7 @@ def main():
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
+    parser.add_argument("--precision", type=int, default=32)
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -231,7 +231,8 @@ def main():
         test_acc += accuracy * len(batch[1])
         ntest += len(batch[1])
     test_acc /= ntest
-    print(f"Total number of test samples: {ntest}. Accuracy: {test_acc}")
+    print(f"Version {args.version} with {dtype} and nchannel={nchannel}: Total number of test samples: {ntest}. Total number of correct predictions: {test_acc * ntest}. Accuracy: {test_acc}")
+    print("")
 
 
 if __name__ == "__main__":

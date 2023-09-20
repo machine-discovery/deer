@@ -2,9 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+speedups = np.full((7, 7, 5), np.nan)
 batch_size = 16
-# fname = "fwd-speedup-report.txt"
-fname = "report-v100-16.txt"
+fname = "bwd-speedup-report-bs16.txt"
 nhs = [1, 2, 4, 8, 16, 32, 64]
 nsequences = [1000, 3000, 10000, 30000, 100000, 300000, 1000000]
 nseeds = 5
@@ -18,6 +18,15 @@ with open(fname, "r") as f:
             nsequence_idx = nsequences.index(nsequence)
         elif line.startswith("Speedup of DEER GRU over Sequential GRU: "):
             speedups[nh_idx, nsequence_idx, seed] = float(line.split()[-1])
+        # try:
+        #     if line.startswith("nh:"):
+        #         nh, nsequence, seed = [int(c) for c in line.split()[1::2]]
+        #         nh_idx = nhs.index(nh)
+        #         nsequence_idx = nsequences.index(nsequence)
+        #     elif line.startswith("Speedup of DEER GRU over Sequential GRU: "):
+        #         speedups[nh_idx, nsequence_idx, seed] = float(line.split()[-1])
+        # except:
+        #     pass
 
 mean_speedups = np.mean(speedups, axis=-1)  # (nhs, nsequences)
 width = 1 / (len(nhs) + 2)
@@ -32,11 +41,11 @@ plt.gca().hlines(1.0, -width, len(nsequences) - 1 + (len(nhs) - 1) * width, colo
 plt.xticks(np.arange(len(nsequences)) + ((len(nhs) - 1) / 2 * width), nsequences_labels, fontsize=12)
 plt.xlabel("Sequence length", fontsize=14)
 plt.ylabel("Speed up", fontsize=14)
-plt.title(f"Speed up of DEER GRU over sequential GRU with batch size = {batch_size}", fontsize=16)
+plt.title(f"Speed up of DEER GRU over sequential GRU (forward + grad) with batch size = {batch_size}", fontsize=16)
 plt.gca().set_yscale("log")
 plt.grid()
 plt.yticks(fontsize=12)
 plt.legend()
 plt.tight_layout()
-plt.savefig("fwd-speedup.png")
+plt.savefig("test_bwd_bs16.png")
 plt.close()

@@ -2,7 +2,7 @@ from typing import Callable, Tuple, Optional, Union, Any, List
 import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
-
+import pdb
 # 1D sequence: RNN or ODE
 
 def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
@@ -41,10 +41,10 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     # set the default initial guess
     if yinit_guess is None:
         yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)
-    
+
     def func2(ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
         return func(ylist[0], x, params)
-    
+
     def shifter_func(y: jnp.ndarray, params: Any) -> List[jnp.ndarray]:
         # y: (nsamples, ny)
         return [y]
@@ -216,4 +216,5 @@ def matmul_recursive(mats: jnp.ndarray, vecs: jnp.ndarray, y0: jnp.ndarray) -> j
     # perform the scan
     elems = (first_elem, second_elem)
     _, yt = jax.lax.associative_scan(binary_operator, elems)
+    # jax.debug.print("{nan} {inf}", nan=jnp.any(jnp.isnan(yt)), inf=jnp.any(jnp.isinf(yt)))
     return yt  # (nsamples, ny)
