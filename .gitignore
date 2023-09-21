@@ -140,7 +140,3 @@ dmypy.json
 
 # vscode settings
 .vscode/
-
-# key file
-SLDENSE_READ_KEYS
-BEEBLO_READ_KEYS

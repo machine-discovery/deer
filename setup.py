@@ -1,7 +1,7 @@
 import os
 from setuptools import setup, find_packages
 
-module_name = "qpert"
+module_name = "deer"
 
 file_dir = os.path.dirname(os.path.realpath(__file__))
 absdir = lambda p: os.path.join(file_dir, p)
@@ -15,8 +15,8 @@ with open(verfile, "r") as fp:
 setup(
     name=module_name,
     version=version["get_version"](),
-    description='Differential equation solvers',
-    url='https://github.com/mfkasim1/qpert/',
+    description='Parallelizing sequential models',
+    url='https://github.com/mfkasim1/deer/',
     author='mfkasim1',
     author_email='firman.kasim@gmail.com',
     license='Commercial',
@@ -25,7 +25,6 @@ setup(
     install_requires=[
         "numpy>=1.8.2",
         "scipy>=1.7.2",
-        "torch>=1.11, !=1.12.0",  # https://github.com/pytorch/pytorch/issues/80489 because 1.12.0 do not work well with functorch
         "tensorboard>=2.2.0",
         "matplotlib>=3.4.2",
     ],
