@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Any, List, Tuple, Callable, Sequence, Optional
 
 import equinox as eqx
@@ -7,8 +6,6 @@ import jax.numpy as jnp
 from jax._src import prng
 
 from deer.seq1d import seq1d
-
-import pdb
 
 
 def vmap_to_shape(func: Callable, shape: Sequence[int]):
@@ -187,10 +184,9 @@ class MultiScaleGRU(eqx.Module):
             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
             x = self.mlps[i](x) + x  # add with norm added in the next loop
             inputs = x
-        return self.classifier(x), yinit_guess
+        return self.classifier(x)
 
 
-# @partial(jax.jit, static_argnames=("use_scan"))
 class GRU(eqx.Module):
     gru: eqx.Module
     use_scan: bool
@@ -210,11 +206,7 @@ class GRU(eqx.Module):
         assert len(inputs.shape) == len(h0.shape)
 
         states = vmap_to_shape(self.gru, inputs.shape)(inputs, h0)
-        return states  # temporary fix to use deer, remove to use scan
-        if self.use_scan:
-            return states, states
-        else:
-            return states
+        return states, states  # temporary fix to use deer, remove to use scan
 
 
 class SingleScaleGRU(eqx.Module):
@@ -274,7 +266,7 @@ class SingleScaleGRU(eqx.Module):
         inputs = self.encoder(inputs)
 
         def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
-            return model(inputs, carry)
+            return model(inputs, carry)[1]  # could be [0] or [1]
 
         for i in range(self.nlayer):
             inputs = self.norms[i](inputs)

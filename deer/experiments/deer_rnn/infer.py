@@ -8,10 +8,9 @@ from glob import glob
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-import optax
 from tqdm import tqdm
 
-from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
+from utils import prep_batch, count_params, get_datamodule, compute_metrics
 from models import MultiScaleGRU, SingleScaleGRU
 
 
@@ -39,8 +38,8 @@ def rollout(
     if method == "multiscale_deer":
         # multiple channels from multiple scales -- each channel has its own params
         # do the same multiple times by reusing the same set of parameters
-        out, yinit_guess = model(inputs, y0, yinit_guess)
-        return out.mean(axis=0), yinit_guess
+        out = model(inputs, y0, yinit_guess)
+        return out.mean(axis=0)
     else:
         raise NotImplementedError()
 
@@ -67,40 +66,13 @@ def loss_fn(
     x, y = batch
 
     # ypred: (batch_size, nclass)
-    ypred, yinit_guess = jax.vmap(
+    ypred = jax.vmap(
         rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0, 2)
     )(model, y0, x, yinit_guess, method)
 
     metrics = compute_metrics(ypred, y)
     loss, accuracy = metrics["loss"], metrics["accuracy"]
-    return loss, (accuracy, yinit_guess)
-
-
-@partial(jax.jit, static_argnames=("static", "optimizer", "method"))
-def update_step(
-    params: Any,
-    static: Any,
-    optimizer: optax.GradientTransformation,
-    opt_state: Any,
-    batch: Tuple[jnp.ndarray, jnp.ndarray],
-    y0: jnp.ndarray,
-    yinit_guess: jnp.ndarray,
-    method: str = "deer_rnn"
-) -> Tuple[optax.Params, Any, jnp.ndarray, jnp.ndarray]:
-    """
-    y0 (nlayer, nchannel, batch_size, nstates)
-    yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
-    batch (nbatch, nseq, ndim) (nbatch,)
-    """
-    (loss, (accuracy, yinit_guess)), grad = jax.value_and_grad(
-        loss_fn,
-        argnums=0,
-        has_aux=True
-    )(params, static, y0, batch, yinit_guess, method)
-    updates, opt_state = optimizer.update(grad, opt_state, params)
-    new_params = optax.apply_updates(params, updates)
-    gradnorm = grad_norm(grad)
-    return new_params, opt_state, loss, accuracy, yinit_guess, gradnorm
+    return loss, accuracy
 
 
 def main():
@@ -216,7 +188,7 @@ def main():
         except Exception():
             pass
         batch = prep_batch(batch, dtype)
-        loss, (accuracy, _) = loss_fn(
+        loss, accuracy = loss_fn(
             inference_params, inference_static, y0, batch, yinit_guess, method
         )
         test_acc += accuracy * len(batch[1])
