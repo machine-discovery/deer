@@ -13,14 +13,14 @@ from flax import linen as nn
 import optax
 import numpy as np
 import scipy.integrate
-from deer.seq1d import solve_ivp, seq1d
+from deer.seq1d import solve_ivp
 from PIL import Image
-import pdb
 
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
 # enable float 64
 jax.config.update('jax_enable_x64', True)
+
 
 class HNNModule(nn.Module):
     nhiddens: int
@@ -40,6 +40,7 @@ class HNNModule(nn.Module):
             y = jax.nn.softplus(y)
         y = self.out(y)
         return y
+
 
 class GravitationalDataset:
     # a dataset that returns the time and states of a gravitational system
@@ -110,13 +111,14 @@ class GravitationalDataset:
             axis=-1)  # (dset_length, nstates=8)
         return np.asarray(state0)
 
+
 def get_hnn_dynamics(model: HNNModule, params: Any, y: jnp.ndarray) -> jnp.ndarray:
     # y: (nstates,)
     # returns: (nstates,)
     jac = jax.jacfwd(model.apply, argnums=1)({"params": params}, y)  # (1, nstates)
     dydt = jnp.concatenate((jac[0, jac.shape[-1] // 2:], -jac[0, :jac.shape[-1] // 2]), axis=-1)  # (nstates,)
-    # jax.debug.print("{dydt_shape}, {jac_shape}", dydt_shape=dydt.shape, jac_shape=jac.shape)
     return dydt
+
 
 @partial(jax.jit, static_argnames=("model", "method"))
 def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, yinit_guess: jnp.ndarray,
@@ -132,9 +134,10 @@ def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, y
     else:
         return odeint(model_func, y0, tpts, params)
 
+
 @partial(jax.jit, static_argnames=("model", "method"))
 def loss_fn(model: HNNModule, params: Any, batch: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray],
-            all_yinit_guess: jnp.ndarray, weight: jnp.ndarray, method: str="deer") -> jnp.ndarray:
+            all_yinit_guess: jnp.ndarray, weight: jnp.ndarray, method: str = "deer") -> jnp.ndarray:
     # compute the loss
     # batch: (batch_size, ntpts), (batch_size, ntpts, nstates), (batch_size)
     # yinit_guess (ndata, ntpts, nstates)
@@ -160,17 +163,19 @@ def loss_fn(model: HNNModule, params: Any, batch: Tuple[jnp.ndarray, jnp.ndarray
     # dev = jnp.sum(dev, axis=-2) / jnp.sum(weight)  # (batch_size, nstates)
     return jnp.mean(dev), all_yinit_guess  # (,), (ndata, ntpts, nstates)
 
+
 @partial(jax.jit, static_argnames=("model", "optimizer", "method"))
-def update_step(model:HNNModule, optimizer: optax.GradientTransformation, params: optax.Params, opt_state: Any,
+def update_step(model: HNNModule, optimizer: optax.GradientTransformation, params: optax.Params, opt_state: Any,
                 batch: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], all_yinit_guess: jnp.ndarray,
                 weight: jnp.ndarray,
-                method: str="deer") \
+                method: str = "deer") \
         -> Tuple[optax.Params, Any, jnp.ndarray, jnp.ndarray]:
     (loss, all_yinit_guess), grad = \
         jax.value_and_grad(loss_fn, argnums=1, has_aux=True)(model, params, batch, all_yinit_guess, weight, method)
     updates, opt_state = optimizer.update(grad, opt_state, params)
     params = optax.apply_updates(params, updates)
     return params, opt_state, loss, all_yinit_guess
+
 
 def main():
     # set up argparse for the hyperparameters above
@@ -282,6 +287,7 @@ def main():
             with open(os.path.join(path, "best-model.pt"), "wb") as f:
                 # save the parameters and the optimizer's states
                 pickle.dump((params, opt_state), f)
+
 
 if __name__ == "__main__":
     main()

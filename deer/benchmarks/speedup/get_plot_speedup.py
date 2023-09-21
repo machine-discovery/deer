@@ -19,15 +19,6 @@ with open(fname, "r") as f:
             nsequence_idx = nsequences.index(nsequence)
         elif line.startswith("Speedup of DEER GRU over Sequential GRU: "):
             speedups[nh_idx, nsequence_idx, seed] = float(line.split()[-1])
-        # try:
-        #     if line.startswith("nh:"):
-        #         nh, nsequence, seed = [int(c) for c in line.split()[1::2]]
-        #         nh_idx = nhs.index(nh)
-        #         nsequence_idx = nsequences.index(nsequence)
-        #     elif line.startswith("Speedup of DEER GRU over Sequential GRU: "):
-        #         speedups[nh_idx, nsequence_idx, seed] = float(line.split()[-1])
-        # except:
-        #     pass
 
 mean_speedups = np.mean(speedups, axis=-1)  # (nhs, nsequences)
 width = 1 / (len(nhs) + 2)
