@@ -1,10 +1,12 @@
+import sys
 import pickle
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
-import torch
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 from scipy.io import arff
+
+sys.path.append("../")
 
 
 class EigenWormsDataModule(pl.LightningDataModule):
@@ -15,16 +17,15 @@ class EigenWormsDataModule(pl.LightningDataModule):
         super().__init__()
 
         self.batch_size = batch_size
-        # self.train_file = "/home/yhl48/seq2seq/eigenworm/EigenWorms_TRAIN.arff"
-        # self.test_file = "/home/yhl48/seq2seq/eigenworm/EigenWorms_TEST.arff"
-        self.train_file = "/home/yhl48/seq2seq/eigenworm/neuralrde_split/eigenworms_train.pkl"
-        self.val_file = "/home/yhl48/seq2seq/eigenworm/neuralrde_split/eigenworms_val.pkl"
-        self.test_file = "/home/yhl48/seq2seq/eigenworm/neuralrde_split/eigenworms_test.pkl"
+        self.train_file = "neuralrde_split/eigenworms_train.pkl"
+        self.val_file = "neuralrde_split/eigenworms_val.pkl"
+        self.test_file = "neuralrde_split/eigenworms_test.pkl"
 
     def prepare_data(self):
         pass
 
     def load_arff_data(self, file_path: str):
+        # not in use
         data, meta = arff.loadarff(file_path)
         df = pd.DataFrame(data)
         df["eigenWormMultivariate_attribute"] = df["eigenWormMultivariate_attribute"].apply(lambda cell: np.array(cell.tolist()))
@@ -36,38 +37,14 @@ class EigenWormsDataModule(pl.LightningDataModule):
         return x, y
 
     def setup(self, stage=None):
-        # train_x, train_y = self.load_arff_data(self.train_file)
-        # test_x, test_y = self.load_arff_data(self.test_file)
-
-        # x = np.concatenate([train_x, test_x], axis=0)
-        # y = np.concatenate([train_y, test_y], axis=0)
-
-        # self._dataset = TensorDataset(torch.from_numpy(x), torch.from_numpy(y))
-
-        # train_length = int(len(self._dataset) * 0.7)
-        # val_length = int(len(self._dataset) * 0.15)
-        # test_length = len(self._dataset) - train_length - val_length
-
-        # self._train_dataset, self._val_dataset, self._test_dataset = random_split(
-        #     self._dataset, [train_length, val_length, test_length],
-        #     generator=torch.Generator().manual_seed(42)
-        # )
         with open(self.train_file, "rb") as f:
             x, y = pickle.load(f)
-            # mean, std = x.mean(dim=(0, 1)), x.std(dim=(0, 1))
-            # print("NORMALISE INPUT")
-            # x = (x - mean) / std
-            # print(f"After normalising, training input mean={x.mean()}, std={x.std()}")
             self._train_dataset = TensorDataset(x, y)
         with open(self.val_file, "rb") as f:
             x, y = pickle.load(f)
-            # x = (x - mean) / std
-            # print(f"After normalising, validation input mean={x.mean()}, std={x.std()}")
             self._val_dataset = TensorDataset(x, y)
         with open(self.test_file, "rb") as f:
             x, y = pickle.load(f)
-            # x = (x - mean) / std
-            # print(f"After normalising, test input mean={x.mean()}, std={x.std()}")
             self._test_dataset = TensorDataset(x, y)
         print('LEN TRAIN DATASET', len(self._train_dataset))
         print('LEN VAL DATASET', len(self._val_dataset))
