@@ -253,7 +253,7 @@ class SingleScaleGRU(eqx.Module):
         print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
 
         # project nstates in the feature dimension to nclasses for classification
-        self.classifier = Decoder(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
+        self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
 
         self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
         self.dropout = eqx.nn.Dropout(p=0.2)
