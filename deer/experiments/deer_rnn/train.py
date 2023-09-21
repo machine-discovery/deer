@@ -40,8 +40,8 @@ def rollout(
     if method == "multiscale_deer":
         # multiple channels from multiple scales -- each channel has its own params
         # do the same multiple times by reusing the same set of parameters
-        out, yinit_guess = model(inputs, y0, yinit_guess)
-        return out.mean(axis=0), yinit_guess
+        out = model(inputs, y0, yinit_guess)
+        return out.mean(axis=0)
     else:
         raise NotImplementedError()
 
@@ -68,13 +68,13 @@ def loss_fn(
     x, y = batch
 
     # ypred: (batch_size, nclass)
-    ypred, yinit_guess = jax.vmap(
-        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0, 2)
+    ypred = jax.vmap(
+        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0)
     )(model, y0, x, yinit_guess, method)
 
     metrics = compute_metrics(ypred, y)
     loss, accuracy = metrics["loss"], metrics["accuracy"]
-    return loss, (accuracy, yinit_guess)
+    return loss, accuracy
 
 
 @partial(jax.jit, static_argnames=("static", "optimizer", "method"))
@@ -93,7 +93,7 @@ def update_step(
     yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
     batch (nbatch, nseq, ndim) (nbatch,)
     """
-    (loss, (accuracy, yinit_guess)), grad = jax.value_and_grad(
+    (loss, accuracy), grad = jax.value_and_grad(
         loss_fn,
         argnums=0,
         has_aux=True
@@ -101,7 +101,7 @@ def update_step(
     updates, opt_state = optimizer.update(grad, opt_state, params)
     new_params = optax.apply_updates(params, updates)
     gradnorm = grad_norm(grad)
-    return new_params, opt_state, loss, accuracy, yinit_guess, gradnorm
+    return new_params, opt_state, loss, accuracy, gradnorm
 
 
 def main():
@@ -155,10 +155,10 @@ def main():
     print(f"patience_metric is {patience_metric}")
 
     # check the path
-    logpath = "logs"
+    logpath = "logs_instance_3"
     path = os.path.join(logpath, f"version_{args.version}")
-    if os.path.exists(path):
-        raise ValueError(f"Path {path} already exists!")
+    # if os.path.exists(path):
+    #     raise ValueError(f"Path {path} already exists!")
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
@@ -219,7 +219,7 @@ def main():
             except Exception():
                 pass
             batch = prep_batch(batch, dtype)
-            params, opt_state, loss, accuracy, _, gradnorm = update_step(
+            params, opt_state, loss, accuracy, gradnorm = update_step(
                 params=params,
                 static=static,
                 optimizer=optimizer,
@@ -248,7 +248,7 @@ def main():
                 except Exception():
                     pass
                 batch = prep_batch(batch, dtype)
-                loss, (accuracy, _) = loss_fn(
+                loss, accuracy = loss_fn(
                     inference_params, inference_static, y0, batch, yinit_guess, method
                 )
                 val_loss += loss * len(batch[1])
