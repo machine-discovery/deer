@@ -15,7 +15,6 @@ from tensorboardX import SummaryWriter
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
 from models import MultiScaleGRU, SingleScaleGRU
 
-import pdb
 
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
@@ -136,20 +135,9 @@ def main():
     parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
 
     parser.add_argument(
-        "--dset", type=str, default="pathfinder32",
+        "--dset", type=str, default="eigenworms",
         choices=[
-            # "imdb",
-            # "pathfinder128",
-            # "pathfinder64",
-            # "pathfinder32",
-            # "cifar10",
-            # "cifar10grayscale",
-            # "listops",
-            # "aan",
-            # "sanity_check",
             "eigenworms",
-            # "ecg200",
-            # "rightwhalecalls"
         ],
     )
     args = parser.parse_args()
@@ -179,8 +167,8 @@ def main():
     # check the path
     logpath = "logs"
     path = os.path.join(logpath, f"version_{args.version}")
-    # if os.path.exists(path):
-    #     raise ValueError(f"Path {path} already exists!")
+    if os.path.exists(path):
+        raise ValueError(f"Path {path} already exists!")
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
@@ -193,7 +181,6 @@ def main():
             nlayer=nlayer,
             nclass=nclass,
             key=key,
-            use_scan=use_scan
         )
     elif nchannel == 1:
         model = SingleScaleGRU(
@@ -221,8 +208,6 @@ def main():
         optax.clip_by_global_norm(max_norm=1),
         optax.adam(learning_rate=args.lr)
     )
-    # checkpoint_path = os.path.join(path, "best_model.pkl")
-    # model = eqx.tree_deserialise_leaves(checkpoint_path, model)
     params, static = eqx.partition(model, eqx.is_array)
     opt_state = optimizer.init(params)
     print(f"Total parameter count: {count_params(params)}")
@@ -244,7 +229,6 @@ def main():
             except Exception():
                 pass
             batch = prep_batch(batch, dtype)
-            # replace yinit_guess with _
             params, opt_state, loss, accuracy, _, gradnorm = update_step(
                 params=params,
                 static=static,
@@ -255,7 +239,6 @@ def main():
                 yinit_guess=yinit_guess,
                 method=method
             )
-            # y0 = yinit_guess[:, 0, :]
             summary_writer.add_scalar("train_loss", loss, step)
             summary_writer.add_scalar("train_accuracy", accuracy, step)
             summary_writer.add_scalar("gru_gradnorm", gradnorm, step)
@@ -278,9 +261,6 @@ def main():
                 loss, (accuracy, _) = loss_fn(
                     inference_params, inference_static, y0, batch, yinit_guess, method
                 )
-                # loss, (accuracy, _) = loss_fn(
-                #     params, static, y0, batch, yinit_guess, method
-                # )
                 val_loss += loss * len(batch[1])
                 val_acc += accuracy * len(batch[1])
                 nval += len(batch[1])
@@ -306,6 +286,8 @@ def main():
                 if val_loss < best_val_loss:
                     patience = args.patience
                     best_val_loss = val_loss
+                    if val_acc > best_val_acc:
+                        best_val_acc = val_acc
                     for f in glob(f"{path}/best_model_epoch_*"):
                         os.remove(f)
                     checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
