@@ -201,7 +201,6 @@ def main():
     params, static = eqx.partition(model, eqx.is_array)
     print(f"Total parameter count: {count_params(params)}")
 
-    # training loop
     dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
     dm.setup()
     inference_model = eqx.combine(params, static)
