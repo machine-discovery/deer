@@ -138,18 +138,18 @@ def main():
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
-            "imdb",
-            "pathfinder128",
-            "pathfinder64",
-            "pathfinder32",
-            "cifar10",
-            "cifar10grayscale",
-            "listops",
-            "aan",
-            "sanity_check",
+            # "imdb",
+            # "pathfinder128",
+            # "pathfinder64",
+            # "pathfinder32",
+            # "cifar10",
+            # "cifar10grayscale",
+            # "listops",
+            # "aan",
+            # "sanity_check",
             "eigenworms",
-            "ecg200",
-            "rightwhalecalls"
+            # "ecg200",
+            # "rightwhalecalls"
         ],
     )
     args = parser.parse_args()
