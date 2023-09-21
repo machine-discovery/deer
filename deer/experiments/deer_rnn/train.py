@@ -41,8 +41,6 @@ def rollout(
         # multiple channels from multiple scales -- each channel has its own params
         # do the same multiple times by reusing the same set of parameters
         out, yinit_guess = model(inputs, y0, yinit_guess)
-        # pdb.set_trace()
-        # jax.debug.print("{s}", s=out.shape)
         return out.mean(axis=0), yinit_guess
     else:
         raise NotImplementedError()
@@ -68,11 +66,6 @@ def loss_fn(
     # weight: (ntpts,)
     model = eqx.combine(params, static)
     x, y = batch
-    # (nlayer, nchannel, batch_size, nsequence, nstates)
-    # TODO replace this with something more elegant
-
-    # remove this line
-    # y0 = yinit_guess[..., 0, :]
 
     # ypred: (batch_size, nclass)
     ypred, yinit_guess = jax.vmap(
@@ -81,7 +74,6 @@ def loss_fn(
 
     metrics = compute_metrics(ypred, y)
     loss, accuracy = metrics["loss"], metrics["accuracy"]
-    # pdb.set_trace()
     return loss, (accuracy, yinit_guess)
 
 
@@ -101,8 +93,6 @@ def update_step(
     yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
     batch (nbatch, nseq, ndim) (nbatch,)
     """
-    # params, static = eqx.partition(model, eqx.is_array)
-
     (loss, (accuracy, yinit_guess)), grad = jax.value_and_grad(
         loss_fn,
         argnums=0,
