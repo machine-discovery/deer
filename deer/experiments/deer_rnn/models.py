@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any, List, Tuple, Callable, Sequence, Optional
 
 import equinox as eqx
@@ -189,6 +190,7 @@ class MultiScaleGRU(eqx.Module):
         return self.classifier(x), yinit_guess
 
 
+# @partial(jax.jit, static_argnames=("use_scan"))
 class GRU(eqx.Module):
     gru: eqx.Module
     use_scan: bool
@@ -208,6 +210,7 @@ class GRU(eqx.Module):
         assert len(inputs.shape) == len(h0.shape)
 
         states = vmap_to_shape(self.gru, inputs.shape)(inputs, h0)
+        return states  # temporary fix to use deer, remove to use scan
         if self.use_scan:
             return states, states
         else:
