@@ -131,6 +131,7 @@ def main():
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
+    parser.add_argument("--patience_metric", type=str, default="accuracy")
     parser.add_argument("--precision", type=int, default=32)
     parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
 
@@ -162,6 +163,7 @@ def main():
     nchannel = args.nchannel
     batch_size = args.batch_size
     patience = args.patience
+    patience_metric = args.patience_metric
     use_scan = args.use_scan
 
     if args.precision == 32:
@@ -172,6 +174,7 @@ def main():
         raise ValueError("Only 32 or 64 accepted")
     print(f"dtype is {dtype}")
     print(f"use_scan is {use_scan}")
+    print(f"patience_metric is {patience_metric}")
 
     # check the path
     logpath = "logs"
@@ -232,6 +235,7 @@ def main():
     dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
     dm.setup()
     best_val_acc = 0
+    best_val_loss = float("inf")
     for epoch in tqdm(range(args.nepochs), file=sys.stderr):
         loop = tqdm(dm.train_dataloader(), total=len(dm.train_dataloader()), leave=False, file=sys.stderr)
         for i, batch in enumerate(loop):
@@ -284,19 +288,36 @@ def main():
             val_acc /= nval
             summary_writer.add_scalar("val_loss", val_loss, step)
             summary_writer.add_scalar("val_accuracy", val_acc, step)
-            if val_acc > best_val_acc:
-                patience = args.patience
-                best_val_acc = val_acc
-                for f in glob(f"{path}/best_model_epoch_*"):
-                    os.remove(f)
-                checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
-                best_model = eqx.combine(params, static)
-                eqx.tree_serialise_leaves(checkpoint_path, best_model)
+            if patience_metric == "accuracy":
+                if val_acc > best_val_acc:
+                    patience = args.patience
+                    best_val_acc = val_acc
+                    for f in glob(f"{path}/best_model_epoch_*"):
+                        os.remove(f)
+                    checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
+                    best_model = eqx.combine(params, static)
+                    eqx.tree_serialise_leaves(checkpoint_path, best_model)
+                else:
+                    patience -= 1
+                    if patience == 0:
+                        print(f"The validation accuracy stopped improving, training ends here at epoch {epoch} and step {step}!")
+                        break
+            elif patience_metric == "loss":
+                if val_loss < best_val_loss:
+                    patience = args.patience
+                    best_val_loss = val_loss
+                    for f in glob(f"{path}/best_model_epoch_*"):
+                        os.remove(f)
+                    checkpoint_path = os.path.join(path, f"best_model_epoch_{epoch}_step_{step}.pkl")
+                    best_model = eqx.combine(params, static)
+                    eqx.tree_serialise_leaves(checkpoint_path, best_model)
+                else:
+                    patience -= 1
+                    if patience == 0:
+                        print(f"The validation loss stopped improving at {best_val_loss} with accuracy {best_val_acc}, training ends here at epoch {epoch} and step {step}!")
+                        break
             else:
-                patience -= 1
-                if patience == 0:
-                    print(f"The validation accuracy stopped improving, training ends here at epoch {epoch} and step {step}!")
-                    break
+                raise ValueError
 
 
 if __name__ == "__main__":
