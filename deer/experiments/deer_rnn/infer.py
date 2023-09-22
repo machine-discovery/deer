@@ -79,7 +79,6 @@ def main():
     parser.add_argument("--nclass", type=int, default=10)
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
-    parser.add_argument("--patience", type=int, default=200)
     parser.add_argument("--precision", type=int, default=32)
     parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
     parser.add_argument(
