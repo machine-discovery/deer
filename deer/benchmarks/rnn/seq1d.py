@@ -95,6 +95,6 @@ if __name__ == "__main__":
             print("nh:", nh, "nsequence:", nsequence, "seed:", seed)
             try:
                 benchmark_seq1d_gru(nh=nh, nsequence=nsequence, seed=seed, batch_size=batch_size)
-            except:
+            except Exception:
                 print("Fail")
             print("--------")
