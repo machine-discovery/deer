@@ -2,15 +2,15 @@ from typing import Tuple, Callable, Sequence, Any
 import itertools
 from functools import partial
 from time import time
-from tqdm import tqdm
 import jax
 import jax.numpy as jnp
 import flax.linen
 from deer.seq1d import seq1d
-import pdb
+
 
 # jax.config.update('jax_platform_name', 'cpu')
 jax.config.update('jax_enable_x64', True)
+
 
 def benchmark_seq1d_gru(
         nh: int = 8,
@@ -24,8 +24,6 @@ def benchmark_seq1d_gru(
     subkey1, subkey2, key = jax.random.split(key, 3)
 
     # initialize the model and get the first carry
-    # carry = gru.initialize_carry(subkey1, (nh,))  # (nh,)
-    # inputs = jax.random.normal(subkey2, (nsequence, nh), dtype=dtype)  # (nsequence, nh)
     carry = gru.initialize_carry(subkey1, (batch_size, nh))  # (batch_size, nh)
     inputs = jax.random.normal(subkey2, (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
     params = gru.init(key, carry, inputs[0])
@@ -37,7 +35,6 @@ def benchmark_seq1d_gru(
     def func2(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any) -> jnp.ndarray:
         gru_func = lambda carry, inputs, params: gru.apply(params, carry, inputs)[0]
         return jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)(gru_func, carry, inputs, params)
-        # return seq1d(gru_func, carry, inputs, params)
 
     func_benchmark(
         func1, func2, (carry, inputs, params),
@@ -88,6 +85,7 @@ def func_benchmark(
     print("Max absolute error:", jnp.max(jnp.abs((x1 - x2))))
     print("Max and min of x1:", jnp.max(x1), jnp.min(x1))
     # assert jnp.allclose(x1, x2), "outputs are not close"
+
 
 if __name__ == "__main__":
     # executed with "python seq1d.py > report.txt"
