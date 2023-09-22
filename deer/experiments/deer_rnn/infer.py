@@ -11,7 +11,7 @@ import jax.numpy as jnp
 from tqdm import tqdm
 
 from utils import prep_batch, count_params, get_datamodule, compute_metrics
-from models import MultiScaleGRU, SingleScaleGRU
+from models import SingleScaleGRU
 
 
 # # run on cpu
@@ -135,27 +135,16 @@ def main():
 
     # set up the model and optimizer
     key = jax.random.PRNGKey(args.seed)
-    if nchannel > 1:
-        model = MultiScaleGRU(
-            ninp=ninp,
-            nchannel=nchannel,
-            nstate=nstate,
-            nlayer=nlayer,
-            nclass=nclass,
-            key=key,
-        )
-    elif nchannel == 1:
-        model = SingleScaleGRU(
-            ninp=ninp,
-            nchannel=nchannel,
-            nstate=nstate,
-            nlayer=nlayer,
-            nclass=nclass,
-            key=key,
-            use_scan=use_scan
-        )
-    else:
-        raise ValueError("nchannnel must be a positive integer")
+    assert nchannel == 1, "currently only support 1 channel"
+    model = SingleScaleGRU(
+        ninp=ninp,
+        nchannel=nchannel,
+        nstate=nstate,
+        nlayer=nlayer,
+        nclass=nclass,
+        key=key,
+        use_scan=use_scan
+    )
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
