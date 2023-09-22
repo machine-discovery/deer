@@ -38,8 +38,6 @@ def rollout(
     # returns: (ntpts, nstates)
 
     if method == "multiscale_deer":
-        # multiple channels from multiple scales -- each channel has its own params
-        # do the same multiple times by reusing the same set of parameters
         out = model(inputs, y0, yinit_guess)
         return out.mean(axis=0)
     else:
