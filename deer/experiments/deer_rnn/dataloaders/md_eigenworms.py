@@ -1,10 +1,7 @@
 import sys
 import pickle
-import numpy as np
-import pandas as pd
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, TensorDataset
-from scipy.io import arff
 
 sys.path.append("../")
 
@@ -23,18 +20,6 @@ class EigenWormsDataModule(pl.LightningDataModule):
 
     def prepare_data(self):
         pass
-
-    def load_arff_data(self, file_path: str):
-        # not in use
-        data, meta = arff.loadarff(file_path)
-        df = pd.DataFrame(data)
-        df["eigenWormMultivariate_attribute"] = df["eigenWormMultivariate_attribute"].apply(lambda cell: np.array(cell.tolist()))
-        df["target"] = df["target"].str.decode("utf-8").astype(int)
-
-        x = np.array(df["eigenWormMultivariate_attribute"].tolist())
-        x = np.transpose(x, (0, 2, 1))  # (ndata, nseq, ndim)
-        y = np.array(df["target"].tolist()) - 1  # [0, nclass)
-        return x, y
 
     def setup(self, stage=None):
         with open(self.train_file, "rb") as f:
