@@ -1,5 +1,5 @@
 import sys
-from typing import Tuple, Callable, Sequence, Any
+from typing import Callable, Sequence, Any
 import itertools
 from functools import partial
 from time import time
@@ -32,8 +32,6 @@ def benchmark_seq1d_gru(
     subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
 
     # initialize the model and get the first carry
-    # carry = gru.initialize_carry(subkey1, (nh,))  # (nh,)
-    # inputs = jax.random.normal(subkey2, (nsequence, nh), dtype=dtype)  # (nsequence, nh)
     carry = gru.initialize_carry(subkey1, (batch_size, nh))  # (batch_size, nh)
     inputs = jax.random.normal(subkey2, (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
     labels = jax.random.normal(subkey3, (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
@@ -41,13 +39,11 @@ def benchmark_seq1d_gru(
 
     def func1(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any, labels: jnp.ndarray) -> jnp.ndarray:
         carry, outputs = jax.lax.scan(partial(gru.apply, params), carry, inputs)
-        # what should the output be
         loss = loss_fn(outputs, labels)
         return loss, outputs
 
     def func2(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any, labels: jnp.ndarray) -> jnp.ndarray:
         gru_func = lambda carry, inputs, params: gru.apply(params, carry, inputs)[0]
-        # check this line
         outputs = jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)(gru_func, carry, inputs, params)
         loss = loss_fn(outputs, labels)
         return loss, outputs
@@ -156,7 +152,3 @@ if __name__ == "__main__":
             except Exception:
                 print("Fail")
             print("--------")
-    # for (nh, nsequence) in itertools.product([2], [1000]):
-    #     for seed in range(1):
-    #         print("nh:", nh, "nsequence:", nsequence, "seed:", seed)
-    #         benchmark_seq1d_gru(nh=nh, nsequence=nsequence, seed=seed, batch_size=batch_size)
