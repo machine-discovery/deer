@@ -67,7 +67,7 @@ def loss_fn(
 
     # ypred: (batch_size, nclass)
     ypred = jax.vmap(
-        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0, 2)
+        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0)
     )(model, y0, x, yinit_guess, method)
 
     metrics = compute_metrics(ypred, y)
@@ -131,7 +131,7 @@ def main():
         raise ValueError("Only 32 or 64 accepted")
 
     # check the path
-    logpath = "logs"
+    logpath = "logs_instance_3"
     path = os.path.join(logpath, f"version_{args.version}")
     os.makedirs(path, exist_ok=True)
 
