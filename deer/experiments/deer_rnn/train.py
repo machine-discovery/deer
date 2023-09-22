@@ -30,11 +30,13 @@ def rollout(
     inputs: jnp.ndarray,
     yinit_guess: List[jnp.ndarray],
 ) -> jnp.ndarray:
-    # roll out the model's predictions with y being the state
-    # y0: (nstates,)
-    # inputs: (ntpts,)
-    # yinit_guess: (ntpts, nstates)
-    # returns: (ntpts, nstates)
+    """
+    y0 (nstate,)
+    inputs (nsequence, ninp)
+    yinit_guess (nsequence, nstate)
+
+    return: (nclass,)
+    """
     out = model(inputs, y0, yinit_guess)
     return out.mean(axis=0)
 
@@ -48,18 +50,14 @@ def loss_fn(
     yinit_guess: List[jnp.ndarray],
 ) -> jnp.ndarray:
     """
-    y0 (nlayer, nchannel, nbatch, nstate)
-    yinit_guess (nlayer, nchannel, nbatch, nsequence, nstate)
-    batch (nbatch, nseq, ndim) (nbatch,)
+    y0 (nbatch, nstate)
+    yinit_guess (nbatch, nsequence, nstate)
+    batch (nbatch, nsequence, ninp) (nbatch,)
     """
-    # compute the loss
-    # batch: (batch_size, ntpts, ninp), (batch_size, ntpts, nstates)
-    # yinit_guess (ndata, ntpts, nstates)
-    # weight: (ntpts,)
     model = eqx.combine(params, static)
     x, y = batch
 
-    # ypred: (batch_size, nclass)
+    # ypred: (nbatch, nclass)
     ypred = jax.vmap(
         rollout, in_axes=(None, 0, 0, 0), out_axes=(0)
     )(model, y0, x, yinit_guess)
@@ -80,9 +78,9 @@ def update_step(
     yinit_guess: jnp.ndarray,
 ) -> Tuple[optax.Params, Any, jnp.ndarray, jnp.ndarray]:
     """
-    y0 (nlayer, nchannel, batch_size, nstates)
-    yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
-    batch (nbatch, nseq, ndim) (nbatch,)
+    batch (nbatch, nsequence, ninp) (nbatch,)
+    y0 (nbatch, nstate)
+    yinit_guess (nbatch, nsequence, nstate)
     """
     (loss, accuracy), grad = jax.value_and_grad(
         loss_fn,
@@ -113,7 +111,6 @@ def main():
     parser.add_argument("--patience_metric", type=str, default="accuracy")
     parser.add_argument("--precision", type=int, default=32)
     parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
-
     parser.add_argument(
         "--dset", type=str, default="eigenworms",
         choices=[
@@ -166,11 +163,11 @@ def main():
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
         dtype=dtype
-    )  # (batch_size, nstates)
+    )  # (nbatch, nstate)
     yinit_guess = jnp.zeros(
         (batch_size, nsequence, int(nstate / nchannel)),
         dtype=dtype
-    )  # (batch_size, nsequence, nstates)
+    )  # (nbatch, nsequence, nstate)
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(max_norm=1),
