@@ -1,4 +1,4 @@
-from typing import Tuple, Callable, Sequence, Any
+from typing import Callable, Sequence, Any
 import itertools
 from functools import partial
 from time import time
