@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+speedups = np.full((7, 7, 5), np.nan)
 batch_size = 16
 gpu_type = "v100"
 fname = f"report-{gpu_type}-{batch_size}.txt"
@@ -38,5 +39,5 @@ plt.grid()
 plt.yticks(fontsize=12)
 plt.legend()
 plt.tight_layout()
-plt.savefig("fwd-speedup.png")
+plt.savefig("test_bwd_bs16.png")
 plt.close()

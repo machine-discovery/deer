@@ -1,22 +1,18 @@
 import argparse
 import os
-import dill as pickle
 import sys
 from functools import partial
-from typing import Tuple, Any, Optional, List
+from typing import Tuple, Any, List
 from glob import glob
+
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import optax
-import equinox as eqx
-from flax import serialization
 from tqdm import tqdm
-from tensorboardX import SummaryWriter
 
-from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
+from utils import prep_batch, count_params, get_datamodule, compute_metrics
 from models import MultiScaleGRU, SingleScaleGRU
-from deer.seq1d import seq1d
-import pdb
+
 
 # # run on cpu
 # jax.config.update('jax_platform_name', 'cpu')
@@ -40,12 +36,8 @@ def rollout(
     # returns: (ntpts, nstates)
 
     if method == "multiscale_deer":
-        # multiple channels from multiple scales -- each channel has its own params
-        # do the same multiple times by reusing the same set of parameters
-        out, yinit_guess = model(inputs, y0, yinit_guess)
-        # pdb.set_trace()
-        # jax.debug.print("{s}", s=out.shape)
-        return out.mean(axis=0), yinit_guess
+        out = model(inputs, y0, yinit_guess)
+        return out.mean(axis=0)
     else:
         raise NotImplementedError()
 
@@ -70,50 +62,15 @@ def loss_fn(
     # weight: (ntpts,)
     model = eqx.combine(params, static)
     x, y = batch
-    # (nlayer, nchannel, batch_size, nsequence, nstates)
-    # TODO replace this with something more elegant
-
-    # remove this line
-    # y0 = yinit_guess[..., 0, :]
 
     # ypred: (batch_size, nclass)
-    ypred, yinit_guess = jax.vmap(
-        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0, 2)
+    ypred = jax.vmap(
+        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0)
     )(model, y0, x, yinit_guess, method)
 
     metrics = compute_metrics(ypred, y)
     loss, accuracy = metrics["loss"], metrics["accuracy"]
-    # pdb.set_trace()
-    return loss, (accuracy, yinit_guess)
-
-
-@partial(jax.jit, static_argnames=("static", "optimizer", "method"))
-def update_step(
-    params: Any,
-    static: Any,
-    optimizer: optax.GradientTransformation,
-    opt_state: Any,
-    batch: Tuple[jnp.ndarray, jnp.ndarray],
-    y0: jnp.ndarray,
-    yinit_guess: jnp.ndarray,
-    method: str = "deer_rnn"
-) -> Tuple[optax.Params, Any, jnp.ndarray, jnp.ndarray]:
-    """
-    y0 (nlayer, nchannel, batch_size, nstates)
-    yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
-    batch (nbatch, nseq, ndim) (nbatch,)
-    """
-    # params, static = eqx.partition(model, eqx.is_array)
-
-    (loss, (accuracy, yinit_guess)), grad = jax.value_and_grad(
-        loss_fn,
-        argnums=0,
-        has_aux=True
-    )(params, static, y0, batch, yinit_guess, method)
-    updates, opt_state = optimizer.update(grad, opt_state, params)
-    new_params = optax.apply_updates(params, updates)
-    gradnorm = grad_norm(grad)
-    return new_params, opt_state, loss, accuracy, yinit_guess, gradnorm
+    return loss, accuracy
 
 
 def main():
@@ -132,6 +89,9 @@ def main():
     parser.add_argument("--nlayer", type=int, default=5)
     parser.add_argument("--nchannel", type=int, default=4)
     parser.add_argument("--patience", type=int, default=200)
+    parser.add_argument("--precision", type=int, default=32)
+    parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
+
     parser.add_argument(
         "--dset", type=str, default="pathfinder32",
         choices=[
@@ -159,6 +119,7 @@ def main():
     nlayer = args.nlayer
     nchannel = args.nchannel
     batch_size = args.batch_size
+    use_scan = args.use_scan
 
     if args.precision == 32:
         dtype = jnp.float32
@@ -168,7 +129,7 @@ def main():
         raise ValueError("Only 32 or 64 accepted")
 
     # check the path
-    logpath = "logs"
+    logpath = "logs_instance_3"
     path = os.path.join(logpath, f"version_{args.version}")
     os.makedirs(path, exist_ok=True)
 
@@ -181,7 +142,7 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
         )
     elif nchannel == 1:
         model = SingleScaleGRU(
@@ -190,7 +151,8 @@ def main():
             nstate=nstate,
             nlayer=nlayer,
             nclass=nclass,
-            key=key
+            key=key,
+            use_scan=use_scan
         )
     else:
         raise ValueError("nchannnel must be a positive integer")
@@ -209,7 +171,6 @@ def main():
     params, static = eqx.partition(model, eqx.is_array)
     print(f"Total parameter count: {count_params(params)}")
 
-    # training loop
     dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
     dm.setup()
     inference_model = eqx.combine(params, static)
@@ -225,13 +186,14 @@ def main():
         except Exception():
             pass
         batch = prep_batch(batch, dtype)
-        loss, (accuracy, _) = loss_fn(
+        loss, accuracy = loss_fn(
             inference_params, inference_static, y0, batch, yinit_guess, method
         )
         test_acc += accuracy * len(batch[1])
         ntest += len(batch[1])
     test_acc /= ntest
-    print(f"Total number of test samples: {ntest}. Accuracy: {test_acc}")
+    print(f"Version {args.version} with {dtype} and nchannel={nchannel}: Total number of test samples: {ntest}. Total number of correct predictions: {test_acc * ntest}. Accuracy: {test_acc}")
+    print("")
 
 
 if __name__ == "__main__":

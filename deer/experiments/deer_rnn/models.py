@@ -7,8 +7,6 @@ from jax._src import prng
 
 from deer.seq1d import seq1d
 
-import pdb
-
 
 def vmap_to_shape(func: Callable, shape: Sequence[int]):
     rank = len(shape)
@@ -88,7 +86,6 @@ class MLP(eqx.Module):
 
 
 class ScaleGRU(eqx.Module):
-    # check if everything defined here is meant to be trainable
     gru: eqx.Module
     log_s: jnp.ndarray  # check if this is trainable
 
@@ -109,8 +106,6 @@ class ScaleGRU(eqx.Module):
         s = jnp.exp(jnp.clip(self.log_s, a_min=-10, a_max=10))
         states = vmap_to_shape(self.gru, inputs.shape)(inputs / s, h0)
         states = (states - h0) / s + h0
-        # jax.debug.print("{mean} {std}", mean=states.mean(), std=states.std())
-        # print(states.mean(), states.std())
         return states
 
 
@@ -153,7 +148,6 @@ class MultiScaleGRU(eqx.Module):
         ]
         assert len(self.scale_grus) == nlayer
         assert len(self.scale_grus[0]) == nchannel
-        # assert len(self.mlps) == nlayer
         print(f"scale_grus random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
         print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
 
@@ -171,7 +165,6 @@ class MultiScaleGRU(eqx.Module):
         def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
             return model(inputs, carry)
 
-        # x_from_all_layers = []
         for i in range(self.nlayer):
             inputs = self.norms[i](inputs)
 
@@ -180,43 +173,32 @@ class MultiScaleGRU(eqx.Module):
             for ch in range(self.nchannel):
                 x = seq1d(
                     model_func,
-                    h0,  # h0[i][ch],
+                    h0,
                     inputs,
                     self.scale_grus[i][ch],
-                    yinit_guess,  # yinit_guess[i][ch]
+                    yinit_guess,
                 )
                 x_from_all_channels.append(x)
-                # pdb.set_trace()
-                # print(i, ch)
-                # print(inputs.mean().val.primal, inputs.std().val.primal)
-                # print(x.mean().val.primal, x.std().val.primal)
-                # print("")
-                # pdb.set_trace()
-                # jax.debug.print("{mean} {std}", mean=x.mean(), std=x.std())
-                # pdb.set_trace()
 
-            # x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
-            # x = x + inputs
             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
-            # x = self.dropout(x, key=self.dropout_key.astype(jnp.uint32))
             x = self.mlps[i](x) + x  # add with norm added in the next loop
             inputs = x
-        # yinit_guess = jnp.stack(x_from_all_layers)
-        return self.classifier(x), yinit_guess
+        return self.classifier(x)
 
 
 class GRU(eqx.Module):
-    # check if everything defined here is meant to be trainable
     gru: eqx.Module
+    use_scan: bool
 
-    def __init__(self, ninp: int, nstate: int, scale: float, key: prng.PRNGKeyArray):
+    def __init__(self, ninp: int, nstate: int, key: prng.PRNGKeyArray, use_scan: bool):
         self.gru = eqx.nn.GRUCell(
             input_size=ninp,
             hidden_size=nstate,
             key=key
         )
         self.gru = custom_gru(self.gru, key)
+        self.use_scan = use_scan
 
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         # h0.shape == (nbatch, nstate)
@@ -224,7 +206,7 @@ class GRU(eqx.Module):
         assert len(inputs.shape) == len(h0.shape)
 
         states = vmap_to_shape(self.gru, inputs.shape)(inputs, h0)
-        return states
+        return states, states  # temporary fix to use deer, remove to use scan
 
 
 class SingleScaleGRU(eqx.Module):
@@ -237,8 +219,9 @@ class SingleScaleGRU(eqx.Module):
     norms: List[eqx.nn.LayerNorm]
     dropout: eqx.nn.Dropout
     dropout_key: prng.PRNGKeyArray
+    use_scan: bool
 
-    def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray):
+    def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray, use_scan: bool):
         keycount = 1 + (nchannel + 1) * nlayer + 1 + 1  # +1 for dropout
         print(f"Keycount: {keycount}")
         keys = jax.random.split(key, keycount)
@@ -257,8 +240,8 @@ class SingleScaleGRU(eqx.Module):
             GRU(
                 ninp=nstate,
                 nstate=gru_nstate,
-                scale=10 ** i,  # 10 ** (i / 2),
-                key=keys[int(1 + (nchannel * j) + i)]
+                key=keys[int(1 + (nchannel * j) + i)],
+                use_scan=use_scan
             ) for i in range(nchannel)] for j in range(nlayer)
         ]
         self.mlps = [
@@ -266,7 +249,6 @@ class SingleScaleGRU(eqx.Module):
         ]
         assert len(self.grus) == nlayer
         assert len(self.grus[0]) == nchannel
-        # assert len(self.mlps) == nlayer
         print(f"scale_grus random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
         print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
 
@@ -277,35 +259,36 @@ class SingleScaleGRU(eqx.Module):
         self.dropout = eqx.nn.Dropout(p=0.2)
         self.dropout_key = keys[-1]
 
+        self.use_scan = use_scan
+
     def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
 
         def model_func(carry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
-            return model(inputs, carry)
+            return model(inputs, carry)[1]  # could be [0] or [1]
 
-        # x_from_all_layers = []
         for i in range(self.nlayer):
             inputs = self.norms[i](inputs)
 
             x_from_all_channels = []
 
             for ch in range(self.nchannel):
-                x = seq1d(
-                    model_func,
-                    h0,  # h0[i][ch],
-                    inputs,
-                    self.grus[i][ch],
-                    yinit_guess,  # yinit_guess[i][ch]
-                )
+                if self.use_scan:
+                    model = lambda carry, inputs: self.grus[i][ch](inputs, carry)
+                    x = jax.lax.scan(model, h0, inputs)[1]
+                else:
+                    x = seq1d(
+                        model_func,
+                        h0,
+                        inputs,
+                        self.grus[i][ch],
+                        yinit_guess,
+                    )
                 x_from_all_channels.append(x)
 
-            # x_from_all_layers.append(jnp.stack(x_from_all_channels))
             x = jnp.concatenate(x_from_all_channels, axis=-1)
-            # x = x + inputs
             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
-            # x = self.dropout(x, key=self.dropout_key.astype(jnp.uint32))
             x = self.mlps[i](x) + x  # add with norm added in the next loop
             inputs = x
-        # yinit_guess = jnp.stack(x_from_all_layers)
-        return self.classifier(x), yinit_guess
+        return self.classifier(x)
