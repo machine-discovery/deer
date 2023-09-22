@@ -1,7 +1,8 @@
-from typing import Callable, Any, Optional, Tuple, List
+from typing import Callable, Any, Tuple, List
 from functools import partial
 import jax
 import jax.numpy as jnp
+
 
 @partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9))
 def deer_iteration(
@@ -67,6 +68,7 @@ def deer_iteration(
         yinit_guess=yinit_guess,
         max_iter=max_iter)[0]
 
+
 def deer_iteration_helper(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -96,7 +98,7 @@ def deer_iteration_helper(
         ytparams = shifter_func(yt, shifter_func_params)
         gts = [-gt for gt in jacfunc(ytparams, xinput, params)]  # [p_num] + (nsamples, ny, ny)
         # rhs: (nsamples, ny)
-        rhs = func2(ytparams, xinput, params)
+        rhs = func2(ytparams, xinput, params)  # (carry, input, params) see train.py L41
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
@@ -118,6 +120,7 @@ def deer_iteration_helper(
     err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
     return yt, gts, func2
+
 
 def deer_iteration_eval(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
@@ -148,6 +151,7 @@ def deer_iteration_eval(
              jax.tree_util.Partial(shifter_func))
     return yt, resid
 
+
 def deer_iteration_bwd(
         # collect non-gradable inputs first
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
@@ -171,5 +175,6 @@ def deer_iteration_bwd(
     # TODO: think about how to compute the gradient of the shifter_func_params?
     grad_shifter_func_params = None
     return grad_params, grad_xinput, grad_inv_lin_params, grad_shifter_func_params, None
+
 
 deer_iteration.defvjp(deer_iteration_eval, deer_iteration_bwd)
