@@ -111,7 +111,7 @@ class SingleScaleGRU(eqx.Module):
     nchannel: int
     nlayer: int
     encoder: MLP
-    grus: List[List[ScaleGRU]]
+    grus: List[List[GRU]]
     mlps: List[MLP]
     classifier: MLP
     norms: List[eqx.nn.LayerNorm]
