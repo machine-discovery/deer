@@ -1,0 +1,585 @@
+nh: 1 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 14.74504315372055
+--------
+nh: 1 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 16.354614032831854
+--------
+nh: 1 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 16.1502850529384
+--------
+nh: 1 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 19.196410515672397
+--------
+nh: 1 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 19.17436027362554
+--------
+nh: 1 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 42.38194368157018
+--------
+nh: 1 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 40.59608747774912
+--------
+nh: 1 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 41.243313596451024
+--------
+nh: 1 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 48.87819312630469
+--------
+nh: 1 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 49.28229969902679
+--------
+nh: 1 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 107.86076410122013
+--------
+nh: 1 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 110.07605321830873
+--------
+nh: 1 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 108.50817353262852
+--------
+nh: 1 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 129.98575374073556
+--------
+nh: 1 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 129.9211744386874
+--------
+nh: 1 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 199.48969308291345
+--------
+nh: 1 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 199.79264820785474
+--------
+nh: 1 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 195.75149529673183
+--------
+nh: 1 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 241.45003756574005
+--------
+nh: 1 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 242.88559151043202
+--------
+nh: 1 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 369.2568700175213
+--------
+nh: 1 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 442.7977538222898
+--------
+nh: 1 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 446.5709168536074
+--------
+nh: 1 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 559.1716508446817
+--------
+nh: 1 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 561.3695792389119
+--------
+nh: 1 nsequence: 300000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 674.2154768294865
+--------
+nh: 1 nsequence: 300000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 708.2591245723663
+--------
+nh: 1 nsequence: 300000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 665.2746371264404
+--------
+nh: 1 nsequence: 300000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 880.098331489235
+--------
+nh: 1 nsequence: 300000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 883.9919963894581
+--------
+nh: 1 nsequence: 1000000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 1027.7384565357256
+--------
+nh: 1 nsequence: 1000000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 1030.3387377439847
+--------
+nh: 1 nsequence: 1000000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 1034.8722081401024
+--------
+nh: 1 nsequence: 1000000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 1268.419765593584
+--------
+nh: 1 nsequence: 1000000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 1268.835280540843
+--------
+nh: 2 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 14.736946990833001
+--------
+nh: 2 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 5.691162514945995
+--------
+nh: 2 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 11.888269573969602
+--------
+nh: 2 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 8.825419898155355
+--------
+nh: 2 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 12.185393601255338
+--------
+nh: 2 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 24.50305634226493
+--------
+nh: 2 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 45.60155296369786
+--------
+nh: 2 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 54.89974512026523
+--------
+nh: 2 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 17.10312076534214
+--------
+nh: 2 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 55.435313424342084
+--------
+nh: 2 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 86.77839644689429
+--------
+nh: 2 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 107.26825069536591
+--------
+nh: 2 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 105.28226363272235
+--------
+nh: 2 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 107.76010021312823
+--------
+nh: 2 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 107.92549839741717
+--------
+nh: 2 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 111.4255185148459
+--------
+nh: 2 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 118.15124701849278
+--------
+nh: 2 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 123.01968802394063
+--------
+nh: 2 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 108.68319860936806
+--------
+nh: 2 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 116.1540220351711
+--------
+nh: 2 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 120.56512335856254
+--------
+nh: 2 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 121.44812557574492
+--------
+nh: 2 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 118.19229412809541
+--------
+nh: 2 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 123.44685018810702
+--------
+nh: 2 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 135.16698470193148
+--------
+nh: 2 nsequence: 300000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 109.07052720231033
+--------
+nh: 2 nsequence: 300000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 124.06952593718235
+--------
+nh: 2 nsequence: 300000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 130.91222541624546
+--------
+nh: 2 nsequence: 300000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 130.81943693607948
+--------
+nh: 2 nsequence: 300000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 115.77027472924016
+--------
+nh: 2 nsequence: 1000000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 97.63488704097388
+--------
+nh: 2 nsequence: 1000000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 116.94995826758111
+--------
+nh: 2 nsequence: 1000000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 116.96804676905877
+--------
+nh: 2 nsequence: 1000000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 125.4919941112752
+--------
+nh: 2 nsequence: 1000000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 129.31724403334928
+--------
+nh: 4 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 7.18501231173917
+--------
+nh: 4 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 4.685560399261307
+--------
+nh: 4 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 7.230691085372964
+--------
+nh: 4 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 9.628534032296693
+--------
+nh: 4 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 5.475828140122954
+--------
+nh: 4 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 50.72113336173839
+--------
+nh: 4 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 51.110031547254906
+--------
+nh: 4 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 50.669463478859335
+--------
+nh: 4 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 50.188501176710126
+--------
+nh: 4 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 50.01384852724859
+--------
+nh: 4 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 65.48644362137208
+--------
+nh: 4 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 65.02790032746101
+--------
+nh: 4 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 81.43849816187549
+--------
+nh: 4 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 80.71693726069628
+--------
+nh: 4 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 81.26320961894278
+--------
+nh: 4 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 70.20041142803052
+--------
+nh: 4 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 70.5406942404801
+--------
+nh: 4 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 75.96045471786194
+--------
+nh: 4 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 67.97519319100282
+--------
+nh: 4 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 66.94873796681034
+--------
+nh: 4 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 87.57017924459733
+--------
+nh: 4 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 86.5750733606676
+--------
+nh: 4 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 83.38418952645101
+--------
+nh: 4 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 82.2836412024465
+--------
+nh: 4 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 84.14251849099126
+--------
+nh: 4 nsequence: 300000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 81.59667723729221
+--------
+nh: 4 nsequence: 300000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 81.85362753886497
+--------
+nh: 4 nsequence: 300000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 90.05450931280497
+--------
+nh: 4 nsequence: 300000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 83.34224069926466
+--------
+nh: 4 nsequence: 300000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 82.39201621449588
+--------
+nh: 4 nsequence: 1000000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 85.89604028530147
+--------
+nh: 4 nsequence: 1000000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 92.18962027278803
+--------
+nh: 4 nsequence: 1000000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 68.48451731015038
+--------
+nh: 4 nsequence: 1000000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 92.43810920305512
+--------
+nh: 4 nsequence: 1000000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 91.2952691108189
+--------
+nh: 8 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 20.806558472485836
+--------
+nh: 8 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 22.72574242869744
+--------
+nh: 8 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 20.98610962481005
+--------
+nh: 8 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 16.60771103896104
+--------
+nh: 8 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 21.88888970383301
+--------
+nh: 8 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 34.876829123210534
+--------
+nh: 8 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 33.69559656709259
+--------
+nh: 8 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 35.10099318126151
+--------
+nh: 8 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 33.946221759049884
+--------
+nh: 8 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 33.65572513736905
+--------
+nh: 8 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 31.901272344970746
+--------
+nh: 8 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 30.28498779323686
+--------
+nh: 8 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 30.870268977651197
+--------
+nh: 8 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 37.65892742966752
+--------
+nh: 8 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 37.07429588905785
+--------
+nh: 8 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 39.18137430440166
+--------
+nh: 8 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 40.79250704347123
+--------
+nh: 8 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 39.94262735038473
+--------
+nh: 8 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 41.255596242242866
+--------
+nh: 8 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 40.98052370625848
+--------
+nh: 8 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 42.32298712952245
+--------
+nh: 8 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 40.84493438799665
+--------
+nh: 8 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 43.05904030503951
+--------
+nh: 8 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 41.481592669252024
+--------
+nh: 8 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 40.66922972541257
+--------
+nh: 8 nsequence: 300000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 40.449566517546
+--------
+nh: 8 nsequence: 300000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 40.39749446432968
+--------
+nh: 8 nsequence: 300000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 40.508785652137504
+--------
+nh: 8 nsequence: 300000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 42.71961370348815
+--------
+nh: 8 nsequence: 300000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 42.39251755585371
+--------
+nh: 8 nsequence: 1000000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 40.60862059877166
+--------
+nh: 8 nsequence: 1000000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 40.518215164415224
+--------
+nh: 8 nsequence: 1000000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 41.60278522592514
+--------
+nh: 8 nsequence: 1000000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 41.369157716196916
+--------
+nh: 8 nsequence: 1000000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 41.48259630602891
+--------
+nh: 16 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 11.230917391339982
+--------
+nh: 16 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 11.163204490579277
+--------
+nh: 16 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 11.142508969442039
+--------
+nh: 16 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 8.782571639178107
+--------
+nh: 16 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 11.062062106940669
+--------
+nh: 16 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 11.244087373797697
+--------
+nh: 16 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 13.252668554310803
+--------
+nh: 16 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 13.24886393835803
+--------
+nh: 16 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 13.357076422260114
+--------
+nh: 16 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 13.412249923256436
+--------
+nh: 16 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 13.955691600006762
+--------
+nh: 16 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 14.128046888689196
+--------
+nh: 16 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 14.336949379338357
+--------
+nh: 16 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 14.035524939246384
+--------
+nh: 16 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 14.323153093345072
+--------
+nh: 16 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 14.54418711837416
+--------
+nh: 16 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 14.357854993309035
+--------
+nh: 16 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 14.75908307053758
+--------
+nh: 16 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 14.198301348810658
+--------
+nh: 16 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 14.124910432875385
+--------
+nh: 16 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 14.307896804656966
+--------
+nh: 16 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 14.771669918810856
+--------
+nh: 16 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 14.991190422205312
+--------
+nh: 16 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 14.30792259508111
+--------
+nh: 16 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 14.417173762135647
+--------
+nh: 16 nsequence: 300000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 14.715941940583312
+--------
+nh: 16 nsequence: 300000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 15.106514842242282
+--------
+nh: 16 nsequence: 300000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 14.792115698345864
+--------
+nh: 16 nsequence: 300000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 14.342208056723035
+--------
+nh: 16 nsequence: 300000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 14.74703922460997
+--------
+nh: 32 nsequence: 1000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 0.36223799595552647
+--------
+nh: 32 nsequence: 1000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 0.35846157071237256
+--------
+nh: 32 nsequence: 1000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 0.36158372594515104
+--------
+nh: 32 nsequence: 1000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 0.3628978001739255
+--------
+nh: 32 nsequence: 1000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 0.3618667180342636
+--------
+nh: 32 nsequence: 3000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 0.4017905573590696
+--------
+nh: 32 nsequence: 3000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 0.403465281913364
+--------
+nh: 32 nsequence: 3000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 0.4004669808765372
+--------
+nh: 32 nsequence: 3000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 0.41267551639240774
+--------
+nh: 32 nsequence: 3000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 0.4056697454859012
+--------
+nh: 32 nsequence: 10000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 0.44692493728114074
+--------
+nh: 32 nsequence: 10000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 0.4324268052608376
+--------
+nh: 32 nsequence: 10000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 0.4288349357972156
+--------
+nh: 32 nsequence: 10000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 0.4349541844666736
+--------
+nh: 32 nsequence: 10000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 0.4336703729019804
+--------
+nh: 32 nsequence: 30000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 0.42682638894426767
+--------
+nh: 32 nsequence: 30000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 0.4373121601059205
+--------
+nh: 32 nsequence: 30000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 0.4532265385773737
+--------
+nh: 32 nsequence: 30000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 0.4371030296102072
+--------
+nh: 32 nsequence: 30000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 0.43601398026553256
+--------
+nh: 32 nsequence: 100000 seed: 0
+Speedup of DEER GRU over Sequential GRU: 0.4464349280001085
+--------
+nh: 32 nsequence: 100000 seed: 1
+Speedup of DEER GRU over Sequential GRU: 0.43792211002289017
+--------
+nh: 32 nsequence: 100000 seed: 2
+Speedup of DEER GRU over Sequential GRU: 0.4430612903506751
+--------
+nh: 32 nsequence: 100000 seed: 3
+Speedup of DEER GRU over Sequential GRU: 0.43738080548101516
+--------
+nh: 32 nsequence: 100000 seed: 4
+Speedup of DEER GRU over Sequential GRU: 0.454594314075226
+--------
