@@ -1,0 +1,151 @@
+nh: 1 nsequence: 1000 seed: 0
+Sequential GRU time: 9.948e-03 s
+DEER GRU time: 5.277e-04 s
+Speedup of DEER GRU over Sequential GRU: 18.85137577373153
+--------
+nh: 1 nsequence: 1000 seed: 1
+Sequential GRU time: 1.001e-02 s
+DEER GRU time: 6.345e-04 s
+Speedup of DEER GRU over Sequential GRU: 15.773972345382129
+--------
+nh: 1 nsequence: 1000 seed: 2
+Sequential GRU time: 9.813e-03 s
+DEER GRU time: 6.426e-04 s
+Speedup of DEER GRU over Sequential GRU: 15.269157283570463
+--------
+nh: 1 nsequence: 1000 seed: 3
+Sequential GRU time: 9.918e-03 s
+DEER GRU time: 5.460e-04 s
+Speedup of DEER GRU over Sequential GRU: 18.162864316122693
+--------
+nh: 1 nsequence: 1000 seed: 4
+Sequential GRU time: 1.012e-02 s
+DEER GRU time: 4.353e-04 s
+Speedup of DEER GRU over Sequential GRU: 23.24821976336547
+--------
+nh: 1 nsequence: 3000 seed: 0
+Sequential GRU time: 2.965e-02 s
+DEER GRU time: 7.678e-04 s
+Speedup of DEER GRU over Sequential GRU: 38.61306649691814
+--------
+nh: 1 nsequence: 3000 seed: 1
+Sequential GRU time: 2.968e-02 s
+DEER GRU time: 6.752e-04 s
+Speedup of DEER GRU over Sequential GRU: 43.954517364973434
+--------
+nh: 1 nsequence: 3000 seed: 2
+Sequential GRU time: 2.875e-02 s
+DEER GRU time: 6.776e-04 s
+Speedup of DEER GRU over Sequential GRU: 42.43051914923561
+--------
+nh: 1 nsequence: 3000 seed: 3
+Sequential GRU time: 2.886e-02 s
+DEER GRU time: 6.298e-04 s
+Speedup of DEER GRU over Sequential GRU: 45.828913747089885
+--------
+nh: 1 nsequence: 3000 seed: 4
+Sequential GRU time: 2.939e-02 s
+DEER GRU time: 6.156e-04 s
+Speedup of DEER GRU over Sequential GRU: 47.746829069925056
+--------
+nh: 1 nsequence: 10000 seed: 0
+Sequential GRU time: 9.913e-02 s
+DEER GRU time: 7.794e-04 s
+Speedup of DEER GRU over Sequential GRU: 127.18175422497515
+--------
+nh: 1 nsequence: 10000 seed: 1
+Sequential GRU time: 9.672e-02 s
+DEER GRU time: 7.257e-04 s
+Speedup of DEER GRU over Sequential GRU: 133.2755318275154
+--------
+nh: 1 nsequence: 10000 seed: 2
+Sequential GRU time: 9.740e-02 s
+DEER GRU time: 8.212e-04 s
+Speedup of DEER GRU over Sequential GRU: 118.61369839149876
+--------
+nh: 1 nsequence: 10000 seed: 3
+Sequential GRU time: 9.680e-02 s
+DEER GRU time: 6.163e-04 s
+Speedup of DEER GRU over Sequential GRU: 157.05173881087774
+--------
+nh: 1 nsequence: 10000 seed: 4
+Sequential GRU time: 9.685e-02 s
+DEER GRU time: 6.229e-04 s
+Speedup of DEER GRU over Sequential GRU: 155.48001148215482
+--------
+nh: 1 nsequence: 30000 seed: 0
+Sequential GRU time: 2.930e-01 s
+DEER GRU time: 8.696e-04 s
+Speedup of DEER GRU over Sequential GRU: 336.9544195865548
+--------
+nh: 1 nsequence: 30000 seed: 1
+Sequential GRU time: 2.896e-01 s
+DEER GRU time: 8.067e-04 s
+Speedup of DEER GRU over Sequential GRU: 359.0191372711286
+--------
+nh: 1 nsequence: 30000 seed: 2
+Sequential GRU time: 2.917e-01 s
+DEER GRU time: 8.337e-04 s
+Speedup of DEER GRU over Sequential GRU: 349.86205367995075
+--------
+nh: 1 nsequence: 30000 seed: 3
+Sequential GRU time: 2.912e-01 s
+DEER GRU time: 6.721e-04 s
+Speedup of DEER GRU over Sequential GRU: 433.2612404888172
+--------
+nh: 1 nsequence: 30000 seed: 4
+Sequential GRU time: 2.905e-01 s
+DEER GRU time: 6.758e-04 s
+Speedup of DEER GRU over Sequential GRU: 429.89822376660254
+--------
+nh: 1 nsequence: 100000 seed: 0
+Sequential GRU time: 9.661e-01 s
+DEER GRU time: 9.149e-04 s
+Speedup of DEER GRU over Sequential GRU: 1055.9744749048834
+--------
+nh: 1 nsequence: 100000 seed: 1
+Sequential GRU time: 9.689e-01 s
+DEER GRU time: 9.094e-04 s
+Speedup of DEER GRU over Sequential GRU: 1065.4307436196568
+--------
+nh: 1 nsequence: 100000 seed: 2
+Sequential GRU time: 9.737e-01 s
+DEER GRU time: 9.613e-04 s
+Speedup of DEER GRU over Sequential GRU: 1012.8849854914313
+--------
+nh: 1 nsequence: 100000 seed: 3
+Sequential GRU time: 9.734e-01 s
+DEER GRU time: 8.070e-04 s
+Speedup of DEER GRU over Sequential GRU: 1206.1980559289734
+--------
+nh: 1 nsequence: 100000 seed: 4
+Sequential GRU time: 9.774e-01 s
+DEER GRU time: 7.700e-04 s
+Speedup of DEER GRU over Sequential GRU: 1269.2814768944966
+--------
+nh: 1 nsequence: 300000 seed: 0
+Sequential GRU time: 2.919e+00 s
+DEER GRU time: 1.615e-03 s
+Speedup of DEER GRU over Sequential GRU: 1807.32748667523
+--------
+nh: 1 nsequence: 300000 seed: 1
+Sequential GRU time: 2.916e+00 s
+DEER GRU time: 1.556e-03 s
+Speedup of DEER GRU over Sequential GRU: 1873.254342697834
+--------
+nh: 1 nsequence: 300000 seed: 2
+Sequential GRU time: 2.921e+00 s
+DEER GRU time: 1.548e-03 s
+Speedup of DEER GRU over Sequential GRU: 1887.3213278903181
+--------
+nh: 1 nsequence: 300000 seed: 3
+Sequential GRU time: 2.931e+00 s
+DEER GRU time: 1.277e-03 s
+Speedup of DEER GRU over Sequential GRU: 2294.341523272741
+--------
+nh: 1 nsequence: 300000 seed: 4
+Sequential GRU time: 2.916e+00 s
+DEER GRU time: 1.279e-03 s
+Speedup of DEER GRU over Sequential GRU: 2281.0696416749806
+--------
+nh: 1 nsequence: 1000000 seed: 0
