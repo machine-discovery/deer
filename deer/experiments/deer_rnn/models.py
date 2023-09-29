@@ -8,7 +8,7 @@ from jax._src import prng
 from deer.seq1d import seq1d
 
 
-def vmap_to_shape(func: Callable, shape: Sequence[int]):
+def vmap_to_shape(func: Callable, shape: Sequence[int]) -> Callable:
     rank = len(shape)
     for i in range(rank - 1):
         func = jax.vmap(func)
@@ -159,7 +159,7 @@ class SingleScaleGRU(eqx.Module):
 
         self.use_scan = use_scan
 
-    def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray):
+    def __call__(self, inputs: jnp.ndarray, h0: jnp.ndarray, yinit_guess: jnp.ndarray) -> jnp.ndarray:
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
 
