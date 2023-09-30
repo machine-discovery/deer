@@ -32,6 +32,7 @@ setup(
         "ml_dtypes==0.2.0",
         "pytest>=7.4.2",
         "tqdm>=4.66.1",
+        "pytorch_lightning>=2.0.1",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
