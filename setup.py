@@ -2,7 +2,6 @@ import os
 from setuptools import setup, find_packages
 
 module_name = "deer"
-module_name = "deer"
 
 file_dir = os.path.dirname(os.path.realpath(__file__))
 absdir = lambda p: os.path.join(file_dir, p)
