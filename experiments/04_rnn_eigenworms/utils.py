@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import optax
 import torch
-from torch.utils.data import Dataset
+import pytorch_lightning as pl
 
 from dataloaders.md_eigenworms import EigenWormsDataModule
 
@@ -20,11 +20,11 @@ def prep_batch(
     return x, y
 
 
-def count_params(params):
+def count_params(params) -> jnp.ndarray:
     return sum(jnp.prod(jnp.asarray(p.shape)) for p in jax.tree_util.tree_leaves(params))
 
 
-def grad_norm(grads):
+def grad_norm(grads) -> jnp.ndarray:
     flat_grads = jnp.concatenate([jnp.reshape(g, (-1,)) for g in jax.tree_util.tree_leaves(grads)])
     return jnp.linalg.norm(flat_grads)
 
@@ -45,7 +45,7 @@ def compute_metrics(
 def get_datamodule(
     dset: str,
     batch_size: int
-) -> Dataset:
+) -> pl.LightningDataModule:
     dset = dset.lower()
     if dset == "eigenworms":
         return EigenWormsDataModule(

@@ -13,7 +13,7 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
 from utils import prep_batch, count_params, get_datamodule, compute_metrics, grad_norm
-from models import MultiScaleGRU, SingleScaleGRU
+from models import SingleScaleGRU
 
 
 # # run on cpu
@@ -23,59 +23,51 @@ jax.config.update('jax_enable_x64', True)
 jax.config.update("jax_debug_nans", True)
 
 
-@partial(jax.jit, static_argnames=("model", "method"))
+@partial(jax.jit, static_argnames=("model"))
 def rollout(
     model: eqx.Module,
     y0: jnp.ndarray,
     inputs: jnp.ndarray,
     yinit_guess: List[jnp.ndarray],
-    method: str = "deer_rnn",
 ) -> jnp.ndarray:
-    # roll out the model's predictions with y being the state
-    # y0: (nstates,)
-    # inputs: (ntpts,)
-    # yinit_guess: (ntpts, nstates)
-    # returns: (ntpts, nstates)
+    """
+    y0 (nstate,)
+    inputs (nsequence, ninp)
+    yinit_guess (nsequence, nstate)
 
-    if method == "multiscale_deer":
-        out = model(inputs, y0, yinit_guess)
-        return out.mean(axis=0)
-    else:
-        raise NotImplementedError()
+    return: (nclass,)
+    """
+    out = model(inputs, y0, yinit_guess)
+    return out.mean(axis=0)
 
 
-@partial(jax.jit, static_argnames=("static", "method"))
+@partial(jax.jit, static_argnames=("static"))
 def loss_fn(
     params: Any,
     static: Any,
     y0: jnp.ndarray,
     batch: Tuple[jnp.ndarray, jnp.ndarray],
     yinit_guess: List[jnp.ndarray],
-    method: str = "deer_rnn"
 ) -> jnp.ndarray:
     """
-    y0 (nlayer, nchannel, nbatch, nstate)
-    yinit_guess (nlayer, nchannel, nbatch, nsequence, nstate)
-    batch (nbatch, nseq, ndim) (nbatch,)
+    y0 (nbatch, nstate)
+    yinit_guess (nbatch, nsequence, nstate)
+    batch (nbatch, nsequence, ninp) (nbatch,)
     """
-    # compute the loss
-    # batch: (batch_size, ntpts, ninp), (batch_size, ntpts, nstates)
-    # yinit_guess (ndata, ntpts, nstates)
-    # weight: (ntpts,)
     model = eqx.combine(params, static)
     x, y = batch
 
-    # ypred: (batch_size, nclass)
+    # ypred: (nbatch, nclass)
     ypred = jax.vmap(
-        rollout, in_axes=(None, 0, 0, 0, None), out_axes=(0)
-    )(model, y0, x, yinit_guess, method)
+        rollout, in_axes=(None, 0, 0, 0), out_axes=(0)
+    )(model, y0, x, yinit_guess)
 
     metrics = compute_metrics(ypred, y)
     loss, accuracy = metrics["loss"], metrics["accuracy"]
     return loss, accuracy
 
 
-@partial(jax.jit, static_argnames=("static", "optimizer", "method"))
+@partial(jax.jit, static_argnames=("static", "optimizer"))
 def update_step(
     params: Any,
     static: Any,
@@ -84,18 +76,17 @@ def update_step(
     batch: Tuple[jnp.ndarray, jnp.ndarray],
     y0: jnp.ndarray,
     yinit_guess: jnp.ndarray,
-    method: str = "deer_rnn"
 ) -> Tuple[optax.Params, Any, jnp.ndarray, jnp.ndarray]:
     """
-    y0 (nlayer, nchannel, batch_size, nstates)
-    yinit_guess (nlayer, nchannel, batch_size, nsequence, nstates)
-    batch (nbatch, nseq, ndim) (nbatch,)
+    batch (nbatch, nsequence, ninp) (nbatch,)
+    y0 (nbatch, nstate)
+    yinit_guess (nbatch, nsequence, nstate)
     """
     (loss, accuracy), grad = jax.value_and_grad(
         loss_fn,
         argnums=0,
         has_aux=True
-    )(params, static, y0, batch, yinit_guess, method)
+    )(params, static, y0, batch, yinit_guess)
     updates, opt_state = optimizer.update(grad, opt_state, params)
     new_params = optax.apply_updates(params, updates)
     gradnorm = grad_norm(grad)
@@ -106,22 +97,20 @@ def main():
     # set up argparse for the hyperparameters above
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr", type=float, default=3e-5)
     parser.add_argument("--nepochs", type=int, default=999999999)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--version", type=int, default=0)
-    parser.add_argument("--method", type=str, default="deer_rnn")
-    parser.add_argument("--ninps", type=int, default=1)
-    parser.add_argument("--nstates", type=int, default=256)
-    parser.add_argument("--nsequence", type=int, default=1024)
-    parser.add_argument("--nclass", type=int, default=10)
+    parser.add_argument("--ninps", type=int, default=6)
+    parser.add_argument("--nstates", type=int, default=32)
+    parser.add_argument("--nsequence", type=int, default=17984)
+    parser.add_argument("--nclass", type=int, default=5)
     parser.add_argument("--nlayer", type=int, default=5)
-    parser.add_argument("--nchannel", type=int, default=4)
-    parser.add_argument("--patience", type=int, default=200)
+    parser.add_argument("--nchannel", type=int, default=1)
+    parser.add_argument("--patience", type=int, default=1000)
     parser.add_argument("--patience_metric", type=str, default="accuracy")
     parser.add_argument("--precision", type=int, default=32)
     parser.add_argument("--use_scan", action="store_true", help="Doing --use_scan sets it to True")
-
     parser.add_argument(
         "--dset", type=str, default="eigenworms",
         choices=[
@@ -130,7 +119,6 @@ def main():
     )
     args = parser.parse_args()
 
-    method = args.method
     ninp = args.ninps
     nstate = args.nstates
     nsequence = args.nsequence
@@ -161,36 +149,25 @@ def main():
 
     # set up the model and optimizer
     key = jax.random.PRNGKey(args.seed)
-    if nchannel > 1:
-        model = MultiScaleGRU(
-            ninp=ninp,
-            nchannel=nchannel,
-            nstate=nstate,
-            nlayer=nlayer,
-            nclass=nclass,
-            key=key,
-        )
-    elif nchannel == 1:
-        model = SingleScaleGRU(
-            ninp=ninp,
-            nchannel=nchannel,
-            nstate=nstate,
-            nlayer=nlayer,
-            nclass=nclass,
-            key=key,
-            use_scan=use_scan
-        )
-    else:
-        raise ValueError("nchannnel must be a positive integer")
+    assert nchannel == 1, "currently only support 1 channel"
+    model = SingleScaleGRU(
+        ninp=ninp,
+        nchannel=nchannel,
+        nstate=nstate,
+        nlayer=nlayer,
+        nclass=nclass,
+        key=key,
+        use_scan=use_scan
+    )
     model = jax.tree_util.tree_map(lambda x: x.astype(dtype) if eqx.is_array(x) else x, model)
     y0 = jnp.zeros(
         (batch_size, int(nstate / nchannel)),
         dtype=dtype
-    )  # (batch_size, nstates)
+    )  # (nbatch, nstate)
     yinit_guess = jnp.zeros(
         (batch_size, nsequence, int(nstate / nchannel)),
         dtype=dtype
-    )  # (batch_size, nsequence, nstates)
+    )  # (nbatch, nsequence, nstate)
 
     optimizer = optax.chain(
         optax.clip_by_global_norm(max_norm=1),
@@ -225,7 +202,6 @@ def main():
                 batch=batch,
                 y0=y0,
                 yinit_guess=yinit_guess,
-                method=method
             )
             summary_writer.add_scalar("train_loss", loss, step)
             summary_writer.add_scalar("train_accuracy", accuracy, step)
@@ -247,7 +223,7 @@ def main():
                     pass
                 batch = prep_batch(batch, dtype)
                 loss, accuracy = loss_fn(
-                    inference_params, inference_static, y0, batch, yinit_guess, method
+                    inference_params, inference_static, y0, batch, yinit_guess
                 )
                 val_loss += loss * len(batch[1])
                 val_acc += accuracy * len(batch[1])
