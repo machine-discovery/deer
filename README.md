@@ -32,7 +32,4 @@ On the `deer/` directory:
 * [`seq1d.py`](deer/seq1d.py): materialization of DEER for discrete 1D sequences and NeuralODE.
 * [`demo.py`](deer/demo.py): a demo script to run the discrete 1D sequence experiment using untrained GRU from Equinox.
 
-The files to reproduce the experiments are in the [`experiments/`](experiments/) directory.
-
-The code for reproducing the experiments in the paper is not complete yet and more is coming soon.
-We just need time to tidy them up and make them more presentable.
+The files to reproduce the experiments are in the [`experiments/`](experiments/) directory with reproducibility instructions are mentioned in README.md file in each experiment directory.
