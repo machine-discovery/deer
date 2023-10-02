@@ -4,7 +4,6 @@ import numpy as np
 import imageio.v2 as imageio
 from io import BytesIO
 from tqdm import tqdm
-import pdb
 
 
 def smooth(scalars: list[float], weight: float) -> list[float]:
@@ -68,7 +67,6 @@ def main():
     tick_fontsize = 12
     label_fontsize = 16
     legend_fontsize = 14
-    pdb.set_trace()
 
     images = []
     for idx in tqdm(range(len(slow_rel_time))):
