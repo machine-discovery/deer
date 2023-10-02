@@ -97,44 +97,6 @@ def main():
         images.append(imageio.imread(buf))
         plt.close(fig)
 
-        # plt.subplot(1, 2, 1)
-        # plt.plot(fast_rel_time, fast_raw, 'C0', alpha=alpha)
-        # plt.plot(slow_rel_time, slow_raw, 'C1', alpha=alpha)
-        # plt.plot(fast_rel_time, fast_smooth, 'C0', label=fast_label)
-        # plt.plot(slow_rel_time, slow_smooth, 'C1', label=slow_label)
-        # # plt.gca().set_yscale("log")
-        # # plot an arrow from the slow to fast's last smoothed value
-        # plt.annotate(
-        #     "",
-        #     xy=(fast_rel_time[-1], fast_smooth[-1]),
-        #     xytext=(slow_rel_time[-1], fast_smooth[-1]),
-        #     arrowprops=dict(arrowstyle="->", color="C2", linewidth=2),
-        # )
-        # # add a text "nx faster-" underneath the middle part of the arrow
-        # arrow_x = (0.14 * slow_rel_time[-1] + 0.86 * fast_rel_time[-1])
-        # arrow_y = fast_smooth[-1] / 1.01
-        # naccel = slow_rel_time[-1] / fast_rel_time[-1]
-        # plt.text(arrow_x, arrow_y, "%dx faster" % np.round(naccel), va="top", ha="center", backgroundcolor=(1.0, 1.0, 1.0, 0.0), fontsize=12)
-        # plt.xticks(fontsize=tick_fontsize)
-        # plt.yticks(fontsize=tick_fontsize)
-        # plt.xlabel("Hours\n(c)", fontsize=label_fontsize)
-        # plt.ylabel("Validation accuracy", fontsize=label_fontsize)
-
-        # plt.subplot(1, 2, 2)
-        # plt.plot(fast_step[:i], fast_raw[:i], 'C0', alpha=alpha)
-        # plt.plot(slow_step[:i], slow_raw[:i], 'C1', alpha=alpha)
-        # plt.plot(fast_step[:i], fast_smooth[:i], 'C0', label=fast_label)
-        # plt.plot(slow_step[:i], slow_smooth[:i], 'C1', label=slow_label)
-        # # plt.gca().set_yscale("log")
-        # plt.xlabel(r"Training steps ($\times 10^3$)" + "\n(d)", fontsize=label_fontsize)
-        # plt.legend(fontsize=legend_fontsize)
-        # plt.xticks(fontsize=tick_fontsize)
-        # plt.yticks(fontsize=tick_fontsize)
-
-        # plt.tight_layout()
-        # plt.savefig("rnn_train_comparison.png")
-        # plt.close()
-
     imageio.mimsave("rnn_train.gif", images, duration=2)
 
 
