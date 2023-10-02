@@ -7,6 +7,8 @@ import equinox as eqx
 from deer.seq1d import seq1d
 
 
+jax.config.update("jax_enable_x64", True)
+
 @functools.partial(jax.jit, static_argnames=("method", "gru_static"))
 def eval_gru(carry: jnp.ndarray, inputs: jnp.ndarray, gru_params, gru_static, method: str = "sequential") \
         -> jnp.ndarray:
@@ -39,9 +41,11 @@ def eval_gru(carry: jnp.ndarray, inputs: jnp.ndarray, gru_params, gru_static, me
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument("--inputsize", type=int, default=1, help="The number of input features")
+    parser.add_argument("--cell", type=str, default="gru", help="Cell type, either 'gru' or 'lstm'")
+    parser.add_argument("--inputsize", type=int, default=2, help="The number of input features")
     parser.add_argument("--batchsize", type=int, default=16, help="Batch size")
     parser.add_argument("--length", type=int, default=10000, help="Sequence length")
+    parser.add_argument("--dtype", type=str, default="float32", help="Data type, either 'float32' or 'float64'")
     args = parser.parse_args()
 
     # problem setup
@@ -49,14 +53,27 @@ def main():
     input_size = args.inputsize
     batch_size = args.batchsize
     length = args.length
+    if args.dtype.lower() == "float32":
+        dtype = jnp.float32
+    elif args.dtype.lower() == "float64":
+        dtype = jnp.float64
+    else:
+        raise ValueError(f"Unknown dtype: '{args.dtype}'. Must be 'float32' or 'float64'.")
+    a = jnp.zeros((1,), dtype=dtype)
 
-    print("===========================")
+    print("=========================================")
     print("Problem setup")
-    print("---------------------------")
-    print(f"* Batch size: {batch_size}")
+    print("-----------------------------------------")
+    print(f"* Random seed: {seed}")
+    print(f"* Cell: {args.cell.upper()}")
     print(f"* Input size: {input_size}")
+    print(f"* Batch size: {batch_size}")
     print(f"* Sequence length: {length}")
-    print("===========================")
+    print(f"* Data type: {a.dtype} with eps = {jnp.finfo(dtype).eps:.3e}")
+    print("=========================================")
+    print("You can change the problem setup by passing arguments to this script.")
+    print("To see the list of arguments, run with --help.")
+    print("")
 
     # initialize the random seed
     key = jax.random.PRNGKey(seed)
@@ -64,12 +81,21 @@ def main():
 
     # create a GRUCell
     hidden_size = input_size
-    gru = eqx.nn.GRUCell(input_size, hidden_size, key=subkey[0])
+    if args.cell.lower() == "gru":
+        gru = eqx.nn.GRUCell(input_size, hidden_size, key=subkey[0])
+    elif args.cell.lower() == "lstm":
+        assert hidden_size % 2 == 0, f"hidden_size must be even for LSTM, got {hidden_size}"
+        gru = LSTMWrapper(eqx.nn.LSTMCell(input_size, hidden_size // 2, key=subkey[0]))
+    else:
+        raise ValueError(f"Unknown cell type: '{args.cell}'. Must be 'gru' or 'lstm'.")
+    
+    # split the module into parameters and static parts
     gru_params, gru_static = eqx.partition(gru, eqx.is_array)
+    gru_params = jax.tree_util.tree_map(lambda x: x.astype(dtype) if x is not None else x, gru_params)
 
     # initialize the random inputs and the initial states of the GRUCell
-    x = jax.random.normal(subkey[1], (length, batch_size, input_size))
-    carry = jnp.zeros((batch_size, hidden_size))
+    x = jax.random.normal(subkey[1], (length, batch_size, input_size), dtype=dtype)
+    carry = jnp.zeros((batch_size, hidden_size), dtype=dtype)
 
     # warm up for sequential method
     print("Warming up sequential method", end="\r")
@@ -102,6 +128,19 @@ def main():
     maxout = outputs1.max()
     minout = outputs1.min()
     print(f"Maximum absolute deviation: {dev:.3e} where output range: {minout:3e} to {maxout:3e}")
+
+class LSTMWrapper(eqx.Module):
+    # wrapper for LSTM to make its states and outputs as one tensor, so the interface is the same as GRU
+    lstm: eqx.nn.LSTMCell
+
+    def __init__(self, lstm: eqx.nn.LSTMCell):
+        super().__init__()
+        self.lstm = lstm
+
+    def __call__(self, input: jnp.ndarray, carry: jnp.ndarray) -> jnp.ndarray:
+        carry1, carry2 = jnp.split(carry, indices_or_sections=2, axis=-1)
+        out1, out2 = self.lstm(input, (carry1, carry2))
+        return jnp.concatenate((out1, out2), axis=-1)
 
 if __name__ == "__main__":
     main()
