@@ -21,4 +21,5 @@ python infer.py  --nchannel 1 --precision 32 --batch_size 3 --version 0 --seed 2
 ```
 
 **Estimated running time**
+
 The experiment will run as long as you want, but we ran it for at least 2 hours with DEER and at least 2 days to get the equivalent results with the sequential mthod. With the patience for early stopping set at 1000 epochs, the training converged after around 4.5 hours for DEER and 4 days and 20 hours for sequential method to reproduce the results on the paper.
