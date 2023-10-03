@@ -1,9 +1,0 @@
-2: default settings
-3: lr=1e-4 (stuck)
-4: like #3, but increasing the weights by 100 time points every time (going down, but I interrupted it very early)
-5: default settings with float64
-6: default settings with RNN (~25 s/it)
-7: default settings with progressive weights over time and lr=1e-4 (initially 3.93 it/s)
-CHANGED THE DATASET SO V0=0.7 to 1.0
-9: default settings
-10: default settings with float64, with progressive lengths from 20 increment 20
