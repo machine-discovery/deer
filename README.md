@@ -9,8 +9,9 @@ So we highly recommend to install the exact same version as ours for compatibili
 Here are the commands to use the same versions as ours:
 
 ```
-pip install --upgrade jax==0.4.11 jaxlib==0.4.11+cuda12.cudnn88 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 pip install --upgrade -e .
+pip install --upgrade jax==0.4.11 jaxlib==0.4.11+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install nvidia-cudnn-cu11==8.6.0.163
 ```
 
 ## Getting started
