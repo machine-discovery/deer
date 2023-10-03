@@ -57,5 +57,5 @@ Maximum absolute deviation: 2.384e-07 where output range: -9.216077e-01 to 7.263
 
 The files to reproduce the experiments are in the [`experiments/`](experiments/) directory with reproducibility instructions are mentioned in README.md file in each experiment directory.
 
-Speed comparison of training a GRU model using sequential method (orange) vs DEER method (blue):
+Speed comparison of training a GRU model using sequential method (orange) vs DEER method (blue) (2 seconds in this animation corresponds to about an hour in training time):
 ![rnn_train](https://github.com/mfkasim1/deer/assets/1624640/17659f34-219b-42b9-8683-a858a111dbdc)
