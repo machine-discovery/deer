@@ -9,6 +9,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
+import torch
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 
@@ -118,6 +119,9 @@ def main():
         ],
     )
     args = parser.parse_args()
+
+    # set seed for pytorch
+    torch.manual_seed(42)
 
     ninp = args.ninps
     nstate = args.nstates
