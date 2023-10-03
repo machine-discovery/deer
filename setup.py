@@ -33,6 +33,7 @@ setup(
         "pytest>=7.4.2",
         "tqdm>=4.66.1",
         "pytorch_lightning>=2.0.1",
+        "tensorboardX>=2.6.2.2",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
