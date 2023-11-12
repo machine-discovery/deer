@@ -16,7 +16,6 @@ import scipy.integrate
 from deer.seq1d import solve_ivp
 from PIL import Image
 from mshooting import odeint_mshooting
-from debug import shape
 
 # enable float 64
 jax.config.update('jax_enable_x64', True)
@@ -128,7 +127,7 @@ def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, y
     # tpts: (ntpts,)
     # yinit_guess: (ntpts, nstates)
     # returns: (ntpts, nstates)
-    model_func = lambda y, t, params: get_hnn_dynamics(model, params, y)
+    model_func = lambda y, x, params: get_hnn_dynamics(model, params, y)
     if method == "deer":
         return solve_ivp(model_func, y0, tpts[..., None], params, tpts, yinit_guess=yinit_guess)
     elif method == "mshooting":
@@ -180,8 +179,7 @@ def main():
     parser.add_argument("--nepochs", type=int, default=999999999)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--version", type=int, default=0)
-    parser.add_argument("--method", type=str, default="mshooting")
-    # parser.add_argument("--method", type=str, default="deer")
+    parser.add_argument("--method", type=str, default="deer")
     args = parser.parse_args()
 
     nstates = 8
@@ -191,8 +189,7 @@ def main():
     logpath = "logs"
     path = os.path.join(logpath, f"version_{args.version}")
     if os.path.exists(path):
-        # raise ValueError(f"Path {path} already exists!")
-        os.system(f'rm -r {path}')
+        raise ValueError(f"Path {path} already exists!")
     os.makedirs(path, exist_ok=True)
 
     # set up the model and optimizer
@@ -202,8 +199,7 @@ def main():
     optimizer = optax.adam(learning_rate=args.lr)
     opt_state = optimizer.init(params)
 
-    # ntpts = 10000
-    ntpts = 1000
+    ntpts = 10000
     tmax = 10
     ntrain, nval, ntest = 800, 100, 100
     ndata = ntrain + nval + ntest

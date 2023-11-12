@@ -28,6 +28,7 @@ def fixed_odeint(f, x_init, t_span, solver, params):
 @partial(jit, static_argnames=("f", "fine_steps", "maxiter"))
 def root_solve(f, t_span, B, fine_steps, maxiter, params):
     vmap_f = vmap(f, in_axes=(0, None, None))
+
     def step_fn_inner(carry, m):
         B_in, B_coarse, B_fine = carry
         B_in = fixed_odeint(f, B_in, sub_t_span, solver=euler_step, params=params)[-1]
