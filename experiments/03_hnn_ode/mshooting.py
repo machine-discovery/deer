@@ -1,113 +1,78 @@
-import time
-from typing import Callable
 import jax.numpy as jnp
-from flax import linen as nn
-from debug import shape
+from jax import random
+from jax import lax, jit, vmap
+from functools import partial
 
 
-def odeint_mshooting(
-    f: Callable,
-    x: jnp.array,
-    t_span: jnp.array,
-    params,
-    B0=None,
-    fine_steps=2,
-    maxiter=4,
-):
-    print(f"args of odeint_mshooting: {shape((f, x, t_span, params, B0, fine_steps, maxiter), do_print=False)}")
-
-    solver = MSZero()
-    # first-guess B0 of shooting parameters
-    B0 = fixed_odeint(f, x, t_span, solver.coarse_method, params)
-    print(f"shape of B0: {B0.shape}")
-    # determine which odeint to apply to MS solver. This is where time-variance can be introduced
-    B = solver.root_solve(f, x, t_span, B0, fine_steps, maxiter, params)
+def odeint_mshooting(f, x: jnp.array, t_span: jnp.array, params, fine_steps=4, maxiter=4):
+    B0 = fixed_odeint(f, x, t_span, euler_step, params)
+    B = root_solve(f, t_span, B0, fine_steps, maxiter, params)
     return B
 
 
-def fixed_odeint(f, x, t_span, solver, params):
+@partial(jit, static_argnames=("f", "solver"))
+def fixed_odeint(f, x_init, t_span, solver, params):
     """Solves IVPs with same `t_span`, using fixed-step methods"""
-    start_time = time.time()
-    t, dt = t_span[0], t_span[1] - t_span[0]
-    sol = [x]
-    steps = 1
-    while steps <= len(t_span) - 1:
-        if steps % 100 == 0:
-            print(f"step {steps} of {len(t_span)}, shape of x: {x.shape} and t: {t.shape}")
-        x = solver.step(f, x, t, dt, params=params)
-        sol.append(x)
-        t = t + dt
-        if steps < len(t_span) - 1:
-            dt = t_span[steps + 1] - t
-        steps += 1
 
-    time_elapsed = time.time() - start_time
-    print(f"fixed_odeint took {time_elapsed} seconds, shape of x: {x.shape} and t: {t.shape}, shape of t_span: {t_span.shape}")
-    return jnp.stack(sol)
+    def step_fn(carry, t):
+        x, t_prev = carry
+        dt = t - t_prev
+        t_prev = t
+        x = solver(f, x, t_prev, dt, params=params)
+        return (x, t_prev), x
+
+    _, sol = lax.scan(step_fn, (x_init, t_span[0]), t_span[1:])
+    return jnp.concatenate([x_init[None, :], sol])
 
 
-class MSZero(nn.Module):
-    def __init__(self):
-        """Multiple shooting solver using Parareal updates (zero-order approximation of the Jacobian)
+@partial(jit, static_argnames=("f", "fine_steps", "maxiter"))
+def root_solve(f, t_span, B, fine_steps, maxiter, params):
+    vmap_f = vmap(f, in_axes=(0, None, None))
+    def step_fn_inner(carry, m):
+        B_in, B_coarse, B_fine = carry
+        B_in = fixed_odeint(f, B_in, sub_t_span, solver=euler_step, params=params)[-1]
+        B_in = B_in - B_coarse[m] + B_fine[m]
+        return (B_in, B_coarse, B_fine), B_in
 
-        Args:
-            coarse_method (str, optional): . Defaults to 'euler'.
-            fine_method (str, optional): . Defaults to 'rk4'.
-        """
-        self.coarse_method = Euler()
-        self.fine_method = RungeKutta4()
-
-    def root_solve(self, f, x, t_span, B, fine_steps, maxiter, params):
-        dt, n_subinterv = t_span[1] - t_span[0], len(t_span)
-        sub_t_span = jnp.linspace(0, dt, fine_steps)
-        i = 0
-        while i <= maxiter:
-            i += 1
-            B_coarse = fixed_odeint(f, B[i-1:], sub_t_span, solver=self.coarse_method, params=params)[-1]
-            B_fine = fixed_odeint(f, B[i-1:], sub_t_span, solver=self.fine_method, params=params)[-1]
-            B_out = jnp.zeros_like(B)
-            B_out.at[:i].set(B[:i])
-            B_in = B[i-1]
-            for m in range(i, n_subinterv):
-                B_in = fixed_odeint(f, B_in, sub_t_span, solver=self.coarse_method, params=params)[-1]
-                B_in = B_in - B_coarse[m-i] + B_fine[m-i]
-                B_out.at[m].set(B_in)
-            B = B_out
-        return B
+    dt, n_subinterv = t_span[1] - t_span[0], len(t_span)
+    sub_t_span = jnp.linspace(0, dt, fine_steps)
+    for i in range(maxiter+1):
+        B_coarse = fixed_odeint(vmap_f, B, sub_t_span, solver=euler_step, params=params)[-1]
+        B_fine = fixed_odeint(vmap_f, B, sub_t_span, solver=rk4_step, params=params)[-1]
+        _, B_tail = lax.scan(step_fn_inner, (B[i], B_coarse, B_fine), jnp.arange(i, n_subinterv - 1))
+        B = B.at[i + 1:].set(B_tail)
+    return B
 
 
-class Euler():
-    def __init__(self, dtype=jnp.float32):
-        """Explicit Euler ODE stepper, order 1"""
-        self.dtype = dtype
-
-    def step(self, f, x, t, dt, k1=None, params=None):
-        if k1 is None:
-            k1 = f(x, t, params)
-        x_sol = x + dt * k1
-        return x_sol
+@partial(jit, static_argnames=("f",))
+def euler_step(f, x, t, dt, params=None):
+    k1 = f(x, t, params)
+    x_sol = x + dt * k1
+    return x_sol
 
 
-class RungeKutta4():
-    def __init__(self, dtype=jnp.float32):
-        """Explicit Midpoint ODE stepper, order 4"""
-        super().__init__()
-        self.dtype = dtype
-        c = jnp.array([0., 1 / 2, 1 / 2, 1], dtype=dtype)
-        a = [
-            jnp.array([1 / 2], dtype=dtype),
-            jnp.array([0., 1 / 2], dtype=dtype),
-            jnp.array([0., 0., 1], dtype=dtype)]
-        bsol = jnp.array([1 / 6, 1 / 3, 1 / 3, 1 / 6], dtype=dtype)
-        berr = jnp.array([0.])
-        self.tableau = (c, a, bsol, berr)
+@partial(jit, static_argnames=("f",))
+def rk4_step(f, x, t, dt, params=None):
+    k1 = f(x, t, params)
+    k2 = f(x + dt * (1/2 * k1), t,            params)
+    k3 = f(x + dt * (1/2 * k2), t + 1/2 * dt, params)
+    k4 = f(x + dt * k3,         t + 1/2 * dt, params)
+    x_sol = x + dt * (1/6 * k1 + 1/3 * k2 + 1/3 * k3 + 1/6 * k4)
+    return x_sol
 
-    def step(self, f, x, t, dt, k1=None, params=None):
-        c, a, bsol, _ = self.tableau
-        if k1 is None:
-            k1 = f(x, t, params)
-        k2 = f(x + dt * (a[0] * k1), t + c[0] * dt, params)
-        k3 = f(x + dt * (a[1][0] * k1 + a[1][1] * k2), t + c[1] * dt, params)
-        k4 = f(x + dt * (a[2][0] * k1 + a[2][1] * k2 + a[2][2] * k3), t + c[2] * dt, params)
-        x_sol = x + dt * (bsol[0] * k1 + bsol[1] * k2 + bsol[2] * k3 + bsol[3] * k4)
-        return x_sol
+
+if __name__ == "__main__":
+    @jit
+    def lorenz(x, t, params=None):
+        x1, x2, x3 = jnp.split(x, 3, axis=-1)
+        dx1 = 10 * (x2 - x1)
+        dx2 = x1 * (28 - x3) - x2
+        dx3 = x1 * x2 - 8/3 * x3
+        return jnp.concatenate([dx1, dx2, dx3], -1)
+    key = random.PRNGKey(0)
+    x0 = 15 + random.normal(key, (8, 3))
+    t_span = jnp.linspace(0, 3, 3000)
+    b1 = odeint_mshooting(lorenz, x0, t_span, params=None)
+    # b2 = odeint_mshooting_2(lorenz, x0, t_span, params=None)
+    # print(jnp.allclose(b1, b2))
+    # print(jnp.sum(jnp.abs(b1 - b2)))

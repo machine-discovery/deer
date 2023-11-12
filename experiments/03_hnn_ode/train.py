@@ -120,15 +120,6 @@ def get_hnn_dynamics(model: HNNModule, params: Any, y: jnp.ndarray) -> jnp.ndarr
     return dydt
 
 
-def get_hnn_dynamics_batched(model: HNNModule, params: Any, Y: jnp.ndarray) -> jnp.ndarray:
-    # Y: (batchsize, nstates)
-    # returns: (batchsize, nstates)
-    if len(Y.shape) == 1:
-        return get_hnn_dynamics(model, params, Y)
-    batched_dynamics = jax.vmap(get_hnn_dynamics, in_axes=(None, None, 0), out_axes=0)
-    return batched_dynamics(model, params, Y)
-
-
 @partial(jax.jit, static_argnames=("model", "method"))
 def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, yinit_guess: jnp.ndarray,
             method: str = "deer") -> jnp.ndarray:
@@ -137,8 +128,7 @@ def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, y
     # tpts: (ntpts,)
     # yinit_guess: (ntpts, nstates)
     # returns: (ntpts, nstates)
-    def model_func(y, t, params):
-        return get_hnn_dynamics_batched(model, params, y)
+    model_func = lambda y, t, params: get_hnn_dynamics(model, params, y)
     if method == "deer":
         return solve_ivp(model_func, y0, tpts[..., None], params, tpts, yinit_guess=yinit_guess)
     elif method == "mshooting":
