@@ -205,7 +205,8 @@ class LEMCell(eqx.Module):
         self.hid2hid = eqx.nn.Linear(nhid, 3 * nhid, key=keys[1])
         self.transform_z = eqx.nn.Linear(nhid, nhid, key=keys[2])
 
-    def __call__(self, x: jnp.ndarray, y: jnp.ndarray, z: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, x: jnp.ndarray, yz: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        y, z = jnp.split(yz, 2, axis=-1)
         transformed_inp = self.inp2hid(x)
         transformed_hid = self.hid2hid(y)
         i_dt1, i_dt2, i_z, i_y = jnp.split(transformed_inp, 4, axis=-1)
@@ -217,7 +218,8 @@ class LEMCell(eqx.Module):
 
         z = (1 - ms_dt) * z + ms_dt * jax.nn.tanh(i_y + h_y)
         y = (1 - ms_dt_bar) * y + ms_dt_bar * jax.nn.tanh(self.transform_z(z) + i_z)
-        return y, z
+        yz = jnp.concatenate((y, z), axis=-1)
+        return yz
 
 
 class LEM(eqx.Module):
@@ -234,14 +236,14 @@ class LEM(eqx.Module):
         # self.gru = custom_gru(self.gru, key)
         self.use_scan = use_scan
 
-    def __call__(self, inputs: jnp.ndarray, y0: jnp.ndarray, z0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    def __call__(self, inputs: jnp.ndarray, yz0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         # y0.shape == (nbatch, nstate)
         # z0.shape == (nbatch, nstate)
         # inputs.shape == (nbatch, ninp)
-        assert len(inputs.shape) == len(y0.shape) == len(z0.shape)
+        # assert len(inputs.shape) == len(y0.shape) == len(z0.shape)
 
-        ystates, zstates = vmap_to_shape(self.lem, inputs.shape)(inputs, y0, z0)
-        return ystates, zstates
+        yzstates = vmap_to_shape(self.lem, inputs.shape)(inputs, yz0)
+        return yzstates, yzstates
 
 
 class ScaledLEM(eqx.Module):
@@ -275,7 +277,7 @@ class ScaledLEM(eqx.Module):
             LEM(
                 ninp=nstate,
                 nstate=lem_nstate,
-                dt=1.6 * 1e-3,
+                dt=0.0017,
                 key=keys[int(1 + (nchannel * j) + i)],
                 use_scan=use_scan
             ) for i in range(nchannel)] for j in range(nlayer)
@@ -297,12 +299,12 @@ class ScaledLEM(eqx.Module):
 
         self.use_scan = use_scan
 
-    def __call__(self, inputs: jnp.ndarray, y0: jnp.ndarray, z0: jnp.ndarray, yinit_guess: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, inputs: jnp.ndarray, yz0: jnp.ndarray, yinit_guess: jnp.ndarray) -> jnp.ndarray:
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
 
-        def model_func(ycarry: jnp.ndarray, zcarry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
-            return model(inputs, ycarry, zcarry)[1]
+        def model_func(yzcarry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
+            return model(inputs, yzcarry)[1]
 
         for i in range(self.nlayer):
             inputs = self.norms[i](inputs)
@@ -311,21 +313,22 @@ class ScaledLEM(eqx.Module):
 
             for ch in range(self.nchannel):
                 if self.use_scan:
-                    def model(states, inputs):
-                        y, z = states
-                        new_y, new_z = self.lems[i][ch](inputs, y, z)
-                        return (new_y, new_z), (new_y, new_z)
-                    # model = lambda states, inputs: self.lems[i][ch](inputs, states[0], states[1])
-                    x = jax.lax.scan(model, (y0, z0), inputs)[0][0]
+                    # def model(states, inputs):
+                    #     y, z = states
+                    #     new_y, new_z = self.lems[i][ch](inputs, y, z)
+                    #     return (new_y, new_z), (new_y, new_z)
+                    # x = jax.lax.scan(model, (y0, z0), inputs)[0][0]
+                    model = lambda states, inputs: self.lems[i][ch](inputs, states)
+                    x = jax.lax.scan(model, yz0, inputs)[0]
                 else:
                     x = seq1d(
                         model_func,
-                        y0,
-                        z0,
+                        yz0,
                         inputs,
                         self.lems[i][ch],
                         yinit_guess,
                     )
+                    x, _ = jnp.split(x, 2, axis=-1)
                 x_from_all_channels.append(x)
 
             x = jnp.concatenate(x_from_all_channels, axis=-1)
