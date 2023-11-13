@@ -41,6 +41,32 @@ def custom_mlp(mlp: eqx.nn.MLP, key: prng.PRNGKeyArray, init_method: Optional[st
     return mlp
 
 
+def custom_linear(linear: eqx.nn.Linear, key: prng.PRNGKeyArray, init_method: Optional[str] = "he_uniform") -> eqx.nn.MLP:
+    """
+    eqx.nn.MLP with custom initialisation scheme using jax.nn.initializers
+    """
+    where_bias = lambda m: [m.bias]
+    where_weight = lambda m: [m.weight]
+
+    linear = eqx.tree_at(where=where_bias, pytree=linear, replace_fn=jnp.zeros_like)
+
+    if init_method is None:
+        return linear
+
+    if init_method == "he_uniform":
+        # get all the weights of the mlp model
+        weights = where_weight(linear)
+        # split the random key into different subkeys for each layer
+        subkeys = jax.random.split(key, len(weights))
+        new_weights = [
+            jax.nn.initializers.he_uniform()(subkey, weight.shape) for weight, subkey in zip(weights, subkeys)
+        ]
+        linear = eqx.tree_at(where=where_weight, pytree=linear, replace=new_weights)
+    else:
+        return NotImplementedError("only he_uniform is implemented")
+    return linear
+
+
 def custom_gru(gru: eqx.nn.GRUCell, key: prng.PRNGKeyArray) -> eqx.nn.GRUCell:
     """
     eqx.nn.GRUCell with custom initialisation scheme using jax.nn.initializers
@@ -80,6 +106,22 @@ class MLP(eqx.Module):
             key=key
         )
         self.model = custom_mlp(self.model, key)
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        return vmap_to_shape(self.model, x.shape)(x)
+
+
+class Linear(eqx.Module):
+    model: eqx.nn.Linear
+
+    def __init__(self, ninp: int, nout: int, key: prng.PRNGKeyArray):
+        self.model = eqx.nn.Linear(
+            in_features=ninp,
+            out_features=nout,
+            use_bias=True,
+            key=key
+        )
+        self.model = custom_linear(self.model, key)
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         return vmap_to_shape(self.model, x.shape)(x)
@@ -201,9 +243,12 @@ class LEMCell(eqx.Module):
     def __init__(self, ninp: int, nhid: int, dt: float, key: prng.PRNGKeyArray):
         keys = jax.random.split(key, 3)
         self.dt = dt
-        self.inp2hid = eqx.nn.Linear(ninp, 4 * nhid, key=keys[0])
-        self.hid2hid = eqx.nn.Linear(nhid, 3 * nhid, key=keys[1])
-        self.transform_z = eqx.nn.Linear(nhid, nhid, key=keys[2])
+        # self.inp2hid = eqx.nn.Linear(ninp, 4 * nhid, key=keys[0])
+        # self.hid2hid = eqx.nn.Linear(nhid, 3 * nhid, key=keys[1])
+        # self.transform_z = eqx.nn.Linear(nhid, nhid, key=keys[2])
+        self.inp2hid = Linear(ninp, 4 * nhid, key=keys[0])
+        self.hid2hid = Linear(nhid, 3 * nhid, key=keys[1])
+        self.transform_z = Linear(nhid, nhid, key=keys[2])
 
     def __call__(self, x: jnp.ndarray, yz: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
         y, z = jnp.split(yz, 2, axis=-1)
@@ -246,14 +291,104 @@ class LEM(eqx.Module):
         return yzstates, yzstates
 
 
+# class ScaledLEM(eqx.Module):
+#     nchannel: int
+#     nlayer: int
+#     encoder: MLP
+#     lems: List[List[GRU]]
+#     mlps: List[MLP]
+#     classifier: MLP
+#     norms: List[eqx.nn.LayerNorm]
+#     dropout: eqx.nn.Dropout
+#     dropout_key: prng.PRNGKeyArray
+#     use_scan: bool
+
+#     def __init__(self, ninp: int, nchannel: int, nstate: int, nlayer: int, nclass: int, key: prng.PRNGKeyArray, use_scan: bool):
+#         keycount = 1 + (nchannel + 1) * nlayer + 1 + 1  # +1 for dropout
+#         print(f"Keycount: {keycount}")
+#         keys = jax.random.split(key, keycount)
+
+#         self.nchannel = nchannel
+#         self.nlayer = nlayer
+
+#         assert nstate % nchannel == 0
+#         lem_nstate = int(nstate / nchannel)
+
+#         # encode inputs (or rather, project) to have nstates in the feature dimension
+#         self.encoder = MLP(ninp=ninp, nstate=nstate, nout=nstate, key=keys[0])
+
+#         # nlayers of (scale_gru + mlp) pair
+#         self.lems = [[
+#             LEM(
+#                 ninp=nstate,
+#                 nstate=lem_nstate,
+#                 dt=0.0017,
+#                 key=keys[int(1 + (nchannel * j) + i)],
+#                 use_scan=use_scan
+#             ) for i in range(nchannel)] for j in range(nlayer)
+#         ]
+#         self.mlps = [
+#             MLP(ninp=nstate, nstate=nstate, nout=nstate, key=keys[int(i + 1 + nchannel * nlayer)]) for i in range(nlayer)
+#         ]
+#         assert len(self.lems) == nlayer
+#         assert len(self.lems[0]) == nchannel
+#         print(f"scale_lems random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
+#         print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
+
+#         # project nstates in the feature dimension to nclasses for classification
+#         self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
+
+#         self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
+#         self.dropout = eqx.nn.Dropout(p=0.2)
+#         self.dropout_key = keys[-1]
+
+#         self.use_scan = use_scan
+
+#     def __call__(self, inputs: jnp.ndarray, yz0: jnp.ndarray, yinit_guess: jnp.ndarray) -> jnp.ndarray:
+#         # encode (or rather, project) the inputs
+#         inputs = self.encoder(inputs)
+
+#         def model_func(yzcarry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
+#             return model(inputs, yzcarry)[1]
+
+#         for i in range(self.nlayer):
+#             inputs = self.norms[i](inputs)
+
+#             x_from_all_channels = []
+
+#             for ch in range(self.nchannel):
+#                 if self.use_scan:
+#                     # def model(states, inputs):
+#                     #     y, z = states
+#                     #     new_y, new_z = self.lems[i][ch](inputs, y, z)
+#                     #     return (new_y, new_z), (new_y, new_z)
+#                     # x = jax.lax.scan(model, (y0, z0), inputs)[0][0]
+#                     model = lambda states, inputs: self.lems[i][ch](inputs, states)
+#                     x = jax.lax.scan(model, yz0, inputs)[0]
+#                 else:
+#                     x = seq1d(
+#                         model_func,
+#                         yz0,
+#                         inputs,
+#                         self.lems[i][ch],
+#                         yinit_guess,
+#                     )
+#                     x, _ = jnp.split(x, 2, axis=-1)
+#                 x_from_all_channels.append(x)
+
+#             x = jnp.concatenate(x_from_all_channels, axis=-1)
+#             x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
+#             x = self.mlps[i](x) + x  # add with norm added in the next loop
+#             inputs = x
+#         return self.classifier(x)
+
+
 class ScaledLEM(eqx.Module):
     nchannel: int
     nlayer: int
     encoder: MLP
     lems: List[List[GRU]]
-    mlps: List[MLP]
     classifier: MLP
-    norms: List[eqx.nn.LayerNorm]
     dropout: eqx.nn.Dropout
     dropout_key: prng.PRNGKeyArray
     use_scan: bool
@@ -270,30 +405,20 @@ class ScaledLEM(eqx.Module):
         lem_nstate = int(nstate / nchannel)
 
         # encode inputs (or rather, project) to have nstates in the feature dimension
-        self.encoder = MLP(ninp=ninp, nstate=nstate, nout=nstate, key=keys[0])
+        self.encoder = Linear(ninp=ninp, nout=nstate, key=keys[0])
 
         # nlayers of (scale_gru + mlp) pair
-        self.lems = [[
-            LEM(
+        self.lems = LEM(
                 ninp=nstate,
                 nstate=lem_nstate,
                 dt=0.0017,
-                key=keys[int(1 + (nchannel * j) + i)],
+                key=keys[1],
                 use_scan=use_scan
-            ) for i in range(nchannel)] for j in range(nlayer)
-        ]
-        self.mlps = [
-            MLP(ninp=nstate, nstate=nstate, nout=nstate, key=keys[int(i + 1 + nchannel * nlayer)]) for i in range(nlayer)
-        ]
-        assert len(self.lems) == nlayer
-        assert len(self.lems[0]) == nchannel
-        print(f"scale_lems random keys end at index {int(1 + (nchannel * (nlayer - 1)) + (nchannel - 1))}")
-        print(f"mlps random keys end at index {int((nchannel * nlayer) + nlayer)}")
+            )
 
         # project nstates in the feature dimension to nclasses for classification
-        self.classifier = MLP(ninp=nstate, nstate=nstate, nout=nclass, key=keys[int((nchannel + 1) * nlayer + 1)])
+        self.classifier = Linear(ninp=nstate, nout=nclass, key=keys[3])
 
-        self.norms = [eqx.nn.LayerNorm((nstate,), use_weight=False, use_bias=False) for i in range(nlayer * 2)]
         self.dropout = eqx.nn.Dropout(p=0.2)
         self.dropout_key = keys[-1]
 
@@ -302,37 +427,18 @@ class ScaledLEM(eqx.Module):
     def __call__(self, inputs: jnp.ndarray, yz0: jnp.ndarray, yinit_guess: jnp.ndarray) -> jnp.ndarray:
         # encode (or rather, project) the inputs
         inputs = self.encoder(inputs)
+        inputs = jax.nn.relu(inputs)
 
         def model_func(yzcarry: jnp.ndarray, inputs: jnp.ndarray, model: Any):
             return model(inputs, yzcarry)[1]
 
-        for i in range(self.nlayer):
-            inputs = self.norms[i](inputs)
+        x = seq1d(
+            model_func,
+            yz0,
+            inputs,
+            self.lems,
+            yinit_guess,
+        )
+        x, _ = jnp.split(x, 2, axis=-1)
 
-            x_from_all_channels = []
-
-            for ch in range(self.nchannel):
-                if self.use_scan:
-                    # def model(states, inputs):
-                    #     y, z = states
-                    #     new_y, new_z = self.lems[i][ch](inputs, y, z)
-                    #     return (new_y, new_z), (new_y, new_z)
-                    # x = jax.lax.scan(model, (y0, z0), inputs)[0][0]
-                    model = lambda states, inputs: self.lems[i][ch](inputs, states)
-                    x = jax.lax.scan(model, yz0, inputs)[0]
-                else:
-                    x = seq1d(
-                        model_func,
-                        yz0,
-                        inputs,
-                        self.lems[i][ch],
-                        yinit_guess,
-                    )
-                    x, _ = jnp.split(x, 2, axis=-1)
-                x_from_all_channels.append(x)
-
-            x = jnp.concatenate(x_from_all_channels, axis=-1)
-            x = self.norms[i + 1](x + inputs)  # add and norm after multichannel GRU layer
-            x = self.mlps[i](x) + x  # add with norm added in the next loop
-            inputs = x
         return self.classifier(x)
