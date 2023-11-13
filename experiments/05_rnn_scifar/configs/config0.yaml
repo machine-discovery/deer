@@ -1,0 +1,30 @@
+general:
+  batch_size: 64
+  max_steps: 250_000
+
+optimizer:
+- name: clip_by_global_norm
+  max_norm: 1.0
+- name: adam
+  learning_rate: 6e-4
+    # name: warmup_cosine_decay_schedule
+    # init_value: 1e-5
+    # peak_value: 6e-4
+    # final_value: 1e-6
+    # warmup_steps: 100_000
+    # decay_steps: 160_000
+
+case:
+  name: scifar10
+
+model:
+  name: rnnnet
+  nhiddens: 64
+  num_heads: 8
+  nlayers: 8
+  nhiddens_mlp: 64
+  method: deer
+  # p_dropout: 0.1
+  # rnn_wrapper: 1
+  # bidirectional: 1
+  rnn_type: gru
