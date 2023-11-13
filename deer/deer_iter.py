@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9))
+@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9, 10))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -16,6 +16,7 @@ def deer_iteration(
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable as 0
         max_iter: int = 100,
+        clip_ytnext: bool = False,
         ) -> jnp.ndarray:
     """
     Perform the iteration from the DEER framework.
@@ -66,7 +67,8 @@ def deer_iteration(
         inv_lin_params=inv_lin_params,
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
-        max_iter=max_iter)[0]
+        max_iter=max_iter,
+        clip_ytnext=clip_ytnext)[0]
 
 
 def deer_iteration_helper(
@@ -80,6 +82,7 @@ def deer_iteration_helper(
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,
         max_iter: int = 100,
+        clip_ytnext: bool = False,
         ) -> Tuple[jnp.ndarray, List[jnp.ndarray], Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
@@ -101,6 +104,15 @@ def deer_iteration_helper(
         rhs = func2(ytparams, xinput, params)  # (carry, input, params) see train.py L41
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
+
+        # workaround for rnn
+        if clip_ytnext:
+            clip = 1e8
+            yt_next = jnp.clip(yt_next, a_min=-clip, a_max=clip)
+            yt_next = jnp.where(jnp.isnan(yt_next), 0.0, yt_next)
+            # jax.debug.print("{iiter}", iiter=iiter)
+            # jax.debug.print("gteival: {gteival}", gteival=jnp.max(jnp.abs(jnp.real(jnp.linalg.eigvals(gts[0])))))
+
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
         # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=err)
         return err, yt_next, gts, iiter + 1
@@ -132,7 +144,9 @@ def deer_iteration_eval(
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable as 0
-        max_iter: int = 100) -> jnp.ndarray:
+        max_iter: int = 100,
+        clip_ytnext: bool = False,
+        ) -> jnp.ndarray:
     # compute the iteration
     yt, gts, func2 = deer_iteration_helper(
         inv_lin=inv_lin,
@@ -144,7 +158,9 @@ def deer_iteration_eval(
         inv_lin_params=inv_lin_params,
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
-        max_iter=max_iter)
+        max_iter=max_iter,
+        clip_ytnext=clip_ytnext,
+        )
     # the function must be wrapped as a partial to be used in the reverse mode
     resid = (yt, gts, xinput, params, inv_lin_params, shifter_func_params,
              jax.tree_util.Partial(inv_lin), jax.tree_util.Partial(func2),
@@ -159,6 +175,7 @@ def deer_iteration_bwd(
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
         p_num: int,
         max_iter: int,
+        clip_ytnext: bool,
         # the meaningful arguments
         resid: Any,
         grad_yt: jnp.ndarray):

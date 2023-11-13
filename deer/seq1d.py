@@ -9,7 +9,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
               tpts: jnp.ndarray,
               yinit_guess: Optional[jnp.ndarray] = None,
-              max_iter: int = 100) -> jnp.ndarray:
+              max_iter: int = 10000) -> jnp.ndarray:
     """
     Solve the initial value problem dy/dt = func(y, x, params) with y(0) = y0.
 
@@ -60,7 +60,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
           y0: jnp.ndarray, xinp: Any, params: Any,
           yinit_guess: Optional[jnp.ndarray] = None,
-          max_iter: int = 100) -> jnp.ndarray:
+          max_iter: int = 10000) -> jnp.ndarray:
     """
     Solve the discrete sequential equation, y[i + 1] = func(y[i], x[i], params) with the DEER framework.
 
@@ -108,7 +108,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     yt = deer_iteration(
         inv_lin=seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
         inv_lin_params=(y0,), shifter_func_params=(y0,),
-        yinit_guess=yinit_guess, max_iter=max_iter)
+        yinit_guess=yinit_guess, max_iter=max_iter, clip_ytnext=True)
     return yt
 
 
@@ -192,7 +192,12 @@ def binary_operator(element_i: Tuple[jnp.ndarray, jnp.ndarray],
     # associative operator for the scan
     gti, hti = element_i
     gtj, htj = element_j
-    return gtj @ gti, jnp.einsum("...ij,...j->...i", gtj, hti) + htj
+    a = gtj @ gti
+    b = jnp.einsum("...ij,...j->...i", gtj, hti) + htj
+    # clip = 1e9
+    # a = jnp.clip(a, a_min=-clip, a_max=clip)
+    # b = jnp.clip(b, a_min=-clip, a_max=clip)
+    return a, b
 
 
 def matmul_recursive(mats: jnp.ndarray, vecs: jnp.ndarray, y0: jnp.ndarray) -> jnp.ndarray:
