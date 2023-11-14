@@ -71,7 +71,7 @@ class ToSequential(torch.nn.Module):
         return x.reshape(-1, x.shape[-1])
 
 class SeqCIFAR10(Case):
-    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10")):
+    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10"), val_pct: float = 0.2):
         tfms = v2.Compose([
             v2.PILToTensor(),
             v2.ToDtype(torch.float32, scale=True),
@@ -84,7 +84,7 @@ class SeqCIFAR10(Case):
                                                    train=True, download=True)
         self._test = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms, target_transform=target_tfm,
                                                   train=False, download=True)
-        self._ntrain = int(0.8 * len(self._train))
+        self._ntrain = int((1 - val_pct) * len(self._train))
 
     @property
     def with_embedding(self) -> bool:

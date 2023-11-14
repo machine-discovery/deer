@@ -73,6 +73,7 @@ case_kwargs = {
         "class": SeqCIFAR10,
         "kwargs": [
             ("rootdir", str, "data/cifar10"),
+            ("val_pct", float, 0.2),
         ],
     },
 }
