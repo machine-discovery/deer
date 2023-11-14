@@ -95,9 +95,23 @@ class MultiScaleRNN(eqx.Module):
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         # x: (length, input_size)
         # returns: (length, hidden_size)
+        # def scan_func(x: jnp.ndarray, _: None) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        #     # x: (2 ** irnn, length // 2 ** irnn, input_size)
+        #     # output: (length, hidden_size)
+        #     output = jax.vmap(self.rnns[irnns])(x).reshape(-1, self.hidden_size)
+        #     x = x.reshape(x.shape[0] * 2, -1, x.shape[-1])
+        #     return x, output
+        # irnns = jnp.arange(len(self.rnns), dtype=jnp.int64)
+        # x = x.reshape(1, -1, x.shape[-1])
+        # _, outputs = jax.lax.scan(scan_func, x, irnns)  # (num_heads, length, hidden_size)
+        # # (length, num_heads, hidden_size), then (length, num_heads * hidden_size)
+        # return jnp.moveaxis(outputs, 0, -2).reshape(outputs.shape[-2], -1)
+
         xshape = x.shape
-        xs = [x.reshape(2 ** i, -1, xshape[-1]) for i in range(len(self.rnns))]
-        outputs = [jax.vmap(rnn)(x).reshape(-1, self.hidden_size) for rnn, x in zip(self.rnns, xs)]  # [num_heads] + (length, hidden_size)
+        outputs = []
+        for i, rnn in enumerate(self.rnns):
+            xx = x.reshape(2 ** i, -1, xshape[-1])
+            outputs.append(jax.vmap(rnn)(xx).reshape(-1, self.hidden_size))  # [num_heads] + (length, hidden_size)
         output = jnp.concatenate(outputs, axis=-1)  # (length, num_heads * hidden_size)
         return output
 
@@ -145,17 +159,20 @@ class RNNNet(eqx.Module):
     ln0s: List[eqx.Module]
     ln1s: List[eqx.Module]
     mlps: List[eqx.Module]
-    # drop0s: List[eqx.Module]
-    # drop1s: List[eqx.Module]
+    drop0s: List[eqx.Module]
+    drop1s: List[eqx.Module]
     activation: Callable
     lin1: eqx.nn.Linear
     reduce_length: bool
+    prenorm: bool = False
+    final_mlp: Optional[eqx.Module] = None
 
     def __init__(self, num_inps: int, num_outs: int, with_embedding: bool, reduce_length: bool,
                  num_heads: int = 1, nhiddens: int = 64, nlayers: int = 8, nhiddens_mlp: int = 64,
                  method: str = "deer", rnn_type: str = "gru",
-                 # p_dropout: float = 0.0,
-                 bidirectional: bool = False, bidirasymm: bool = False, rnn_wrapper: Optional[int] = None, *,
+                 p_dropout: float = 0.0,
+                 bidirectional: bool = False, bidirasymm: bool = False, rnn_wrapper: Optional[int] = None,
+                 prenorm: bool = False, final_mlp: bool = False, *,
                  key: jax.random.PRNGKeyArray):
 
         # get the embedding
@@ -167,17 +184,20 @@ class RNNNet(eqx.Module):
             self.embedding = None
 
         self.reduce_length = reduce_length
-        key, *subkey = jax.random.split(key, 3)
+        key, *subkey = jax.random.split(key, 4)
         self.lin0 = eqx.nn.Linear(num_inps, nhiddens, key=subkey[0])
         self.lin1 = eqx.nn.Linear(nhiddens, num_outs, key=subkey[1])
         self.activation = jax.nn.gelu
+        self.prenorm = prenorm
+        self.final_mlp = eqx.nn.MLP(nhiddens, nhiddens, nhiddens_mlp, depth=1, activation=self.activation,
+                                    key=subkey[2]) if final_mlp else None
 
         self.rnns = []
         self.ln0s = []
         self.ln1s = []
         self.mlps = []
-        # self.drop0s = []
-        # self.drop1s = []
+        self.drop0s = []
+        self.drop1s = []
         key, *subkey = jax.random.split(key, nlayers + 1)
         key, *subkey1 = jax.random.split(key, nlayers + 1)
         rnn_kwargs = {
@@ -215,28 +235,45 @@ class RNNNet(eqx.Module):
             self.mlps.append(eqx.nn.MLP(nhiddens, nhiddens, nhiddens_mlp, depth=1, activation=self.activation,
                                         final_activation=self.activation, key=subkey1[i]))
             self.ln1s.append(eqx.nn.LayerNorm(nhiddens))
-            # self.drop0s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
-            # self.drop1s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
+            self.drop0s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
+            self.drop1s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
 
-    # def __call__(self, x: jnp.ndarray, key: jax.random.PRNGKeyArray, inference: bool) -> jnp.ndarray:
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, x: jnp.ndarray, key: jax.random.PRNGKeyArray, inference: bool) -> jnp.ndarray:
         # x: (length, num_inps) if not with_embedding else (length,) int
         # returns: (length, num_outs)
         if self.embedding is not None:
             x = jax.vmap(self.embedding)(x)
 
         x = jax.vmap(self.lin0)(x)
-        # for rnn, ln0, mlp, ln1, drop0, drop1 in \
-        #         zip(self.rnns, self.ln0s, self.mlps, self.ln1s, self.drop0s, self.drop1s):
-        for rnn, ln0, mlp, ln1, in zip(self.rnns, self.ln0s, self.mlps, self.ln1s):
-            # key, *subkey = jax.random.split(key, 3)
-            # x = drop0(self.activation(rnn(x)), key=subkey[0], inference=inference) + x
-            x = self.activation(rnn(x)) + x
-            x = jax.vmap(ln0)(x)
-            # x = drop1(jax.vmap(mlp)(x), key=subkey[1], inference=inference) + x
-            x = jax.vmap(mlp)(x) + x
-            x = jax.vmap(ln1)(x)
+
+        key, *subkey = jax.random.split(key, len(self.rnns) * 2 + 1)
+        for i in range(len(self.rnns)):
+            rnn = self.rnns[i]
+            mlp = jax.vmap(self.mlps[i])
+            ln0 = jax.vmap(self.ln0s[i])
+            ln1 = jax.vmap(self.ln1s[i])
+            drop0 = self.drop0s[i]
+            drop1 = self.drop1s[i]
+            sublayer0 = lambda xx: drop0(self.activation(rnn(xx)), key=subkey[2 * i], inference=inference)
+            sublayer1 = lambda xx: drop1(mlp(xx), key=subkey[2 * i + 1], inference=inference)
+            if not self.prenorm:  # post-norm
+                x = ln0(sublayer0(x) + x)
+                # x = drop0(self.activation(rnn(x)), key=subkey[2 * i], inference=inference) + x
+                # x = ln0(x)
+                x = ln1(sublayer1(x) + x)
+                # x = drop1(jax.vmap(mlp)(x), key=subkey[2 * i + 1], inference=inference) + x
+                # x = ln1(x)
+            else:
+                x = sublayer0(ln0(x)) + x
+                x = sublayer0(ln1(x)) + x
+                # x = drop0(self.activation(rnn(jax.vmap(ln0)(x))), key=subkey[2 * i], inference=inference) + x
+                # x = drop1(jax.vmap(mlp)(jax.vmap(ln1)(x)), key=subkey[2 * i + 1], inference=inference) + x
+
         x = jax.vmap(self.lin1)(x)  # (length, num_outs)
         if self.reduce_length:
             x = jnp.mean(x, axis=0)  # (num_outs,)
+        if self.final_mlp is not None:
+            x = self.activation(x)
+            final_mlp = jax.vmap(self.final_mlp) if not self.reduce_length else self.final_mlp
+            x = final_mlp(x)
         return x

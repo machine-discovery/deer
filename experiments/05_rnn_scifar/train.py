@@ -14,29 +14,29 @@ import optax
 from config import read_config, get_model_from_dct, get_case_from_dct, get_optimizer_from_dct
 
 
-@partial(jax.jit, static_argnames=("model_static", "loss_fn"))  # , "inference"))
+@partial(jax.jit, static_argnames=("model_static", "loss_fn", "inference"))
 def calc_loss(model_params, model_static, loss_fn: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
               batch: Tuple[jnp.ndarray, jnp.ndarray],
-              # key: jax.random.PRNGKeyArray, inference: bool
+              key: jax.random.PRNGKeyArray, inference: bool
               ):
     model = eqx.combine(model_params, model_static)
     # input: (batch_size, length, input_size) or (length, batch_size) int
     # target: (batch_size, length, output_size) or (length, batch_size) int
     input, target = batch
     # output: (batch_size, length, output_size)
-    # output = jax.vmap(model, in_axes=(0, None, None))(input, key, inference)
-    output = jax.vmap(model)(input)  # , key, inference)
+    output = jax.vmap(model, in_axes=(0, None, None))(input, key, inference)
+    # output = jax.vmap(model)(input)
     loss = jnp.mean(jax.vmap(loss_fn)(output, target))
     return loss
 
 @partial(jax.jit, static_argnames=("model_static", "loss_fn", "optimizer"))
 def update_step(model_params, model_static, loss_fn: Callable[[jnp.ndarray, jnp.ndarray], jnp.ndarray],
                 optimizer: optax.GradientTransformation, opt_state, batch: Tuple[jnp.ndarray, jnp.ndarray],
-                # key: jax.random.PRNGKeyArray
+                key: jax.random.PRNGKeyArray,
                 ):
     loss, grads = jax.value_and_grad(calc_loss)(
         model_params, model_static, loss_fn, batch,
-        # key=key, inference=False,
+        key=key, inference=False,
     )
     updates, opt_state = optimizer.update(grads, opt_state, model_params)
     model_params = optax.apply_updates(model_params, updates)
@@ -126,7 +126,7 @@ def train():
             # update the model
             model_params, opt_state, loss = update_step(model_params, model_static, case.train_loss_fn,
                                                         optimizer, opt_state, batch,
-                                                        # key=subkey,
+                                                        key=subkey,
                                                         )
             isteps += 1
 
@@ -145,7 +145,7 @@ def train():
 
             # evaluate the model
             loss = calc_loss(model_params, model_static, case.val_loss_fn, batch,
-                             # key=subkey, inference=True,
+                             key=subkey, inference=True,
                              )
             tot_loss = tot_loss + loss * ndata
             tot_count = tot_count + ndata

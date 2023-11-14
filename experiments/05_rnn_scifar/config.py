@@ -25,6 +25,16 @@ optimizer_kwargs = {
             ("eps", float, 1e-8),
         ],
     },
+    "adamw": {
+        "class": optax.adamw,
+        "kwargs": [
+            ("learning_rate", float, 1e-3),
+            ("b1", float, 0.9),
+            ("b2", float, 0.999),
+            ("eps", float, 1e-8),
+            ("weight_decay", float, 1e-4),
+        ],
+    },
     # scheduler
     "warmup_cosine_decay_schedule": {
         "class": optax.warmup_cosine_decay_schedule,
@@ -51,7 +61,9 @@ model_kwargs = {
             ("bidirectional", bool, False),
             ("bidirasymm", bool, False),
             ("rnn_wrapper", int, None),
-            # ("p_dropout", float, None),
+            ("p_dropout", float, None),
+            ("prenorm", bool, False),
+            ("final_mlp", bool, False),
         ],
     },
 }

@@ -19,12 +19,12 @@ case:
 
 model:
   name: rnnnet
-  nhiddens: 64
+  nhiddens: 32
   num_heads: 8
   nlayers: 8
   nhiddens_mlp: 64
   method: deer
-  # p_dropout: 0.1
+  p_dropout: 0.1
   # rnn_wrapper: 1
   # bidirectional: 1
   rnn_type: gru
