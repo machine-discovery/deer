@@ -165,7 +165,6 @@ class RNNNet(eqx.Module):
     lin1: eqx.nn.Linear
     reduce_length: bool
     prenorm: bool = False
-    final_mlp: Optional[eqx.Module] = None
 
     def __init__(self, num_inps: int, num_outs: int, with_embedding: bool, reduce_length: bool,
                  num_heads: int = 1, nhiddens: int = 64, nlayers: int = 8, nhiddens_mlp: int = 64,
@@ -185,12 +184,14 @@ class RNNNet(eqx.Module):
 
         self.reduce_length = reduce_length
         key, *subkey = jax.random.split(key, 4)
-        self.lin0 = eqx.nn.Linear(num_inps, nhiddens, key=subkey[0])
-        self.lin1 = eqx.nn.Linear(nhiddens, num_outs, key=subkey[1])
         self.activation = jax.nn.gelu
+        self.lin0 = eqx.nn.Linear(num_inps, nhiddens, key=subkey[0])
+        if not final_mlp:
+            self.lin1 = eqx.nn.Linear(nhiddens, num_outs, key=subkey[1])
+        else:
+            self.lin1 = eqx.nn.MLP(nhiddens, num_outs, nhiddens_mlp, depth=1, activation=self.activation,
+                                   key=subkey[1])
         self.prenorm = prenorm
-        self.final_mlp = eqx.nn.MLP(nhiddens, nhiddens, nhiddens_mlp, depth=1, activation=self.activation,
-                                    key=subkey[2]) if final_mlp else None
 
         self.rnns = []
         self.ln0s = []
@@ -265,15 +266,14 @@ class RNNNet(eqx.Module):
                 # x = ln1(x)
             else:
                 x = sublayer0(ln0(x)) + x
-                x = sublayer0(ln1(x)) + x
+                x = sublayer1(ln1(x)) + x
                 # x = drop0(self.activation(rnn(jax.vmap(ln0)(x))), key=subkey[2 * i], inference=inference) + x
                 # x = drop1(jax.vmap(mlp)(jax.vmap(ln1)(x)), key=subkey[2 * i + 1], inference=inference) + x
 
-        x = jax.vmap(self.lin1)(x)  # (length, num_outs)
         if self.reduce_length:
             x = jnp.mean(x, axis=0)  # (num_outs,)
-        if self.final_mlp is not None:
-            x = self.activation(x)
-            final_mlp = jax.vmap(self.final_mlp) if not self.reduce_length else self.final_mlp
-            x = final_mlp(x)
+            lin1 = self.lin1
+        else:
+            lin1 = jax.vmap(self.lin1)
+        x = lin1(x)  # (num_outs,) or (length, num_outs)
         return x
