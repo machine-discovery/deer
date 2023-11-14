@@ -9,7 +9,9 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
               tpts: jnp.ndarray,
               yinit_guess: Optional[jnp.ndarray] = None,
-              max_iter: int = 10000) -> jnp.ndarray:
+              max_iter: int = 10000,
+              memory_efficient: bool = False,
+              ) -> jnp.ndarray:
     """
     Solve the initial value problem dy/dt = func(y, x, params) with y(0) = y0.
 
@@ -32,6 +34,8 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
+    memory_efficient: bool
+        If True, then use the memory efficient algorithm for the DEER iteration.
 
     Returns
     -------
@@ -53,14 +57,17 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     inv_lin_params = (tpts, y0)
     yt = deer_iteration(
         inv_lin=solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
-        inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=max_iter)
+        inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=max_iter,
+        memory_efficient=memory_efficient)
     return yt
 
 
 def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
           y0: jnp.ndarray, xinp: Any, params: Any,
           yinit_guess: Optional[jnp.ndarray] = None,
-          max_iter: int = 10000) -> jnp.ndarray:
+          max_iter: int = 10000,
+          memory_efficient: bool = False,
+          ) -> jnp.ndarray:
     """
     Solve the discrete sequential equation, y[i + 1] = func(y[i], x[i], params) with the DEER framework.
 
@@ -81,6 +88,8 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
+    memory_efficient: bool
+        If True, then use the memory efficient algorithm for the DEER iteration.
 
     Returns
     -------
@@ -108,7 +117,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     yt = deer_iteration(
         inv_lin=seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
         inv_lin_params=(y0,), shifter_func_params=(y0,),
-        yinit_guess=yinit_guess, max_iter=max_iter, clip_ytnext=True)
+        yinit_guess=yinit_guess, max_iter=max_iter, memory_efficient=memory_efficient, clip_ytnext=True)
     return yt
 
 

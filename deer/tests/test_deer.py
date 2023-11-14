@@ -1,5 +1,7 @@
 from typing import Any, Tuple
 import pytest
+import itertools
+import functools
 import jax
 import jax.test_util
 import jax.numpy as jnp
@@ -84,8 +86,8 @@ def test_solve_ivp():
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-@pytest.mark.parametrize("jit", [True, False])
-def test_rnn(jit: bool):
+@pytest.mark.parametrize("jit, difficult, memeff", itertools.product([True, False], [True, False], [True, False]))
+def test_rnn(jit: bool, difficult: bool, memeff: bool):
     # test the rnn with the DEER framework using GRU
     def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -100,34 +102,39 @@ def test_rnn(jit: bool):
         return h
 
     # generate random parameters
-    dtype = jnp.float64
+    dtype = jnp.float32 if difficult else jnp.float64
     key = jax.random.PRNGKey(0)
-    nh, nx = 5, 3
+    nh, nx = (2, 2) if difficult else (5, 3)
     subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
-    Wir = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
-    Whr = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    m = 100 if difficult else 1  # difficult makes the temporary value nans
+    Wir = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whr = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
     bhr = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
     subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
-    Wiz = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
-    Whz = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    Wiz = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whz = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
     bhz = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
     subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
-    Win = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5
-    Whn = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5
+    Win = (jax.random.uniform(subkey1, (nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whn = (jax.random.uniform(subkey2, (nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
     bhn = (jax.random.uniform(subkey3, (nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
     params = (Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn)
 
     # generate random inputs and the initial condition
     nsteps = 100
     subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
-    xinp = jax.random.normal(subkey1, shape=(nsteps, nx), dtype=dtype)
+    xinp = jax.random.normal(subkey1, shape=(nsteps, nx), dtype=dtype) / m
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    if jit:
-        func = jax.jit(seq1d, static_argnums=(0,))
+    if memeff:
+        func0 = functools.partial(seq1d, memory_efficient=memeff)
     else:
-        func = seq1d
+        func0 = seq1d
+    if jit:
+        func = jax.jit(func0, static_argnums=(0,))
+    else:
+        func = func0
     hseq = func(gru_func, h0, xinp, params)  # (nsteps, nh)
 
     # calculate the output states using a for loop
@@ -146,7 +153,8 @@ def test_rnn(jit: bool):
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
 
-def test_rnn_derivs():
+@pytest.mark.parametrize("memory_efficient", [True, False])
+def test_rnn_derivs(memory_efficient: bool):
     # test the rnn with the DEER framework using simple RNN function
     def rnn_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -171,7 +179,7 @@ def test_rnn_derivs():
     params = (Wh, Wx)
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
-        hseq = seq1d(rnn_func, h0, xinp, params)  # (nsteps, nh)
+        hseq = seq1d(rnn_func, h0, xinp, params, memory_efficient=memory_efficient)  # (nsteps, nh)
         return hseq
 
     jax.test_util.check_grads(
