@@ -90,7 +90,7 @@ def deer_iteration_helper(
         max_iter: int = 100,
         memory_efficient: bool = False,
         clip_ytnext: bool = False,
-        ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable, Callable]:
+        ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
     func2 = jax.vmap(func, in_axes=(0, 0, None))
@@ -136,7 +136,7 @@ def deer_iteration_helper(
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
     if memory_efficient:
         gts = None
-    return yt, gts, func2, jacfunc
+    return yt, gts, func
 
 
 def deer_iteration_eval(
@@ -154,7 +154,7 @@ def deer_iteration_eval(
         clip_ytnext: bool = False,
         ) -> jnp.ndarray:
     # compute the iteration
-    yt, gts, func2, jacfunc = deer_iteration_helper(
+    yt, gts, func = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
@@ -170,8 +170,9 @@ def deer_iteration_eval(
         )
     # the function must be wrapped as a partial to be used in the reverse mode
     resid = (yt, gts, xinput, params, inv_lin_params, shifter_func_params,
-             jax.tree_util.Partial(inv_lin), jax.tree_util.Partial(func2),
-             jax.tree_util.Partial(shifter_func), jax.tree_util.Partial(jacfunc))
+             jax.tree_util.Partial(inv_lin), jax.tree_util.Partial(func),
+             jax.tree_util.Partial(shifter_func),
+             )
     return yt, resid
 
 
@@ -187,9 +188,11 @@ def deer_iteration_bwd(
         # the meaningful arguments
         resid: Any,
         grad_yt: jnp.ndarray):
-    yt, gts, xinput, params, inv_lin_params, shifter_func_params, inv_lin, func, shifter_func, jacfunc = resid
+    yt, gts, xinput, params, inv_lin_params, shifter_func_params, inv_lin, func, shifter_func = resid
+    func2 = jax.vmap(func, in_axes=(0, 0, None))
 
     if gts is None:
+        jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
         # recompute gts
         ytparams = shifter_func(yt, shifter_func_params)
         gts = [-gt for gt in jacfunc(ytparams, xinput, params)]
@@ -201,7 +204,7 @@ def deer_iteration_bwd(
     _, grad_rhs, grad_inv_lin_params = inv_lin_dual(grad_yt)
     # grad_rhs: (nsamples, ny)
     ytparams = shifter_func(yt, shifter_func_params)
-    _, func_vjp = jax.vjp(func, ytparams, xinput, params)
+    _, func_vjp = jax.vjp(func2, ytparams, xinput, params)
     _, grad_xinput, grad_params = func_vjp(grad_rhs)
     # TODO: think about how to compute the gradient of the shifter_func_params?
     grad_shifter_func_params = None
