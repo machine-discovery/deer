@@ -90,7 +90,7 @@ def deer_iteration_helper(
         max_iter: int = 100,
         memory_efficient: bool = False,
         clip_ytnext: bool = False,
-        ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
+        ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable, Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
     func2 = jax.vmap(func, in_axes=(0, 0, None))
