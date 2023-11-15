@@ -1,4 +1,4 @@
-from typing import List, Tuple, Callable, Optional
+from typing import List, Tuple, Callable, Optional, Any
 import argparse
 import time
 import functools
@@ -81,27 +81,68 @@ class RNN(eqx.Module):
         return outputs
 
 class MultiScaleRNN(eqx.Module):
-    rnns: List[eqx.Module]
+    # rnns: List[eqx.Module]
+    rnn_params: Any
+    rnn_static: Any
+    rnn_params_vmap: Any
     hidden_size: int
+    num_heads: int
 
     def __init__(self, input_size: int, hidden_size: int, num_heads: int = 8, use_bias: bool = True,
                  method: str = "deer", rnn_type: str = "gru", *, 
                  key: jax.random.PRNGKeyArray, **kwargs):
         key, *subkey = jax.random.split(key, num_heads + 1)
         self.hidden_size = hidden_size
-        self.rnns = [RNN(input_size, hidden_size, use_bias, method, rnn_type, key=subkey[i], **kwargs)
-                     for i in range(num_heads)]
+        # rnns = [RNN(input_size, hidden_size, use_bias, method, rnn_type, key=subkey[i], **kwargs)
+        #              for i in range(num_heads)]
+        rnns_params = []
+        m = 8
+        for i in range(num_heads):
+            rnn = RNN(input_size, hidden_size, use_bias, method, rnn_type, key=subkey[i], **kwargs)
+            rnn_params, rnn_static = eqx.partition(rnn, eqx.is_inexact_array)
+            if len(rnns_params) >= m:
+                rnns_params[i % m].append(rnn_params)
+            else:
+                rnns_params.append([rnn_params])
+            self.rnn_static = rnn_static
+
+        def combine(*args):
+            elmt = args[0]
+            if elmt is None:
+                return None
+            return jnp.stack(args) if len(args) > 1 else args[0][None]
+
+        self.rnn_params = [jax.tree_util.tree_map(combine, *rnn_params_lst) for rnn_params_lst in rnns_params]
+        self.num_heads = num_heads
+        self.rnn_params_vmap = jax.tree_util.tree_map(lambda arg: 0 if arg is not None else None, self.rnn_params[0])
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         # x: (length, input_size)
         # returns: (length, hidden_size)
         xshape = x.shape
+
+        def apply_rnn(x: jnp.ndarray, rnn_params: Any) -> jnp.ndarray:
+            # x: (nskips, length // nskips, input_size)
+            rnn = eqx.combine(rnn_params, self.rnn_static)
+            return jax.vmap(rnn)(x)
+
         outputs = []
-        for i, rnn in enumerate(self.rnns):
-            # maximum stride power is 8 (TODO: this should be made as an argument)
-            xx = x.reshape(2 ** (i % 8), -1, xshape[-1])
-            outputs.append(jax.vmap(rnn)(xx).reshape(-1, self.hidden_size))  # [num_heads] + (length, hidden_size)
-        output = jnp.concatenate(outputs, axis=-1)  # (length, num_heads * hidden_size)
+        for i, rnn_params in enumerate(self.rnn_params):
+            xx = x.reshape(2 ** i, -1, xshape[-1])
+            # output: (nrnns, nskips, length // nskips, hidden_size)
+            out = jax.vmap(apply_rnn, in_axes=(None, self.rnn_params_vmap))(xx, rnn_params)
+            out = out.reshape(out.shape[0], -1, self.hidden_size)  # (nrnns, length, hidden_size)
+            out = jnp.moveaxis(out, 0, 1)  # (length, nrnns, hidden_size)
+            out = out.reshape(out.shape[0], -1)  # (length, nrnns * hidden_size)
+            outputs.append(out)
+        output = jnp.concatenate(outputs, axis=-1)  # (length, num_heads * nrnns * hidden_size)
+
+        # outputs = []
+        # for i, rnn in enumerate(self.rnns):
+        #     # maximum stride power is 8 (TODO: this should be made as an argument)
+        #     xx = x.reshape(2 ** (i % 8), -1, xshape[-1])
+        #     outputs.append(jax.vmap(rnn)(xx).reshape(-1, self.hidden_size))  # [num_heads] + (length, hidden_size)
+        # output = jnp.concatenate(outputs, axis=-1)  # (length, num_heads * hidden_size)
         return output
 
 class Bidirectional(eqx.Module):

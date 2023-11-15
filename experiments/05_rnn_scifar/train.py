@@ -54,6 +54,7 @@ def train():
     # set up the experimental directory
     FDIR = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
     logdir = os.path.join(FDIR, args.logdir)
+    os.makedirs(logdir, exist_ok=True)
     shutil.copyfile(args.config, os.path.join(logdir, f"config_{args.version}.yaml"))
     path = os.path.join(logdir, f"version_{args.version}")
     if os.path.exists(path):
