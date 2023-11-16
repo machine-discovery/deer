@@ -71,11 +71,17 @@ class ToSequential(torch.nn.Module):
         return x.reshape(-1, x.shape[-1])
 
 class SeqCIFAR10(Case):
-    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10"), val_pct: float = 0.2):
+    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10"), val_pct: float = 0.2, normtype: int = 1):
+        if normtype == 1:
+            std = (0.2470, 0.2435, 0.2616)
+        elif normtype == 2:
+            std = (0.2023, 0.1994, 0.2010)
+        else:
+            raise ValueError(f"Invalid normtype: {normtype}")
         tfms = v2.Compose([
             v2.PILToTensor(),
             v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
+            v2.Normalize((0.4914, 0.4822, 0.4465), std),
             ToChannelLast(),
             ToSequential(),
         ])

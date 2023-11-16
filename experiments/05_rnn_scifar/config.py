@@ -3,7 +3,7 @@ import yaml
 import jax
 import optax
 import equinox as eqx
-from models import RNNNet
+from models import RNNNet, RNNNet2
 from cases import Case, SeqCIFAR10
 
 
@@ -67,6 +67,20 @@ model_kwargs = {
             ("max_nstrides", int, 8),
         ],
     },
+    "rnnnet2": {
+        "class": RNNNet2,
+        "kwargs": [
+            ("nhiddens", int, 64),
+            ("nlayers", int, 8),
+            ("num_heads", int, 1),
+            ("method", str, "deer"),
+            ("rnn_type", str, "gru"),
+            ("bidirectional", bool, False),
+            ("bidirasymm", bool, False),
+            ("p_dropout", float, None),
+            ("max_nstrides", int, 8),
+        ],
+    },
 }
 
 case_kwargs = {
@@ -75,6 +89,7 @@ case_kwargs = {
         "kwargs": [
             ("rootdir", str, "data/cifar10"),
             ("val_pct", float, 0.2),
+            ("normtype", int, 1),
         ],
     },
 }

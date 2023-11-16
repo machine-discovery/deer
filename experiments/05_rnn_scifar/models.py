@@ -200,7 +200,9 @@ class RNNNet(eqx.Module):
                  method: str = "deer", rnn_type: str = "gru",
                  p_dropout: float = 0.0,
                  bidirectional: bool = False, bidirasymm: bool = False, rnn_wrapper: Optional[int] = None,
-                 prenorm: bool = False, final_mlp: bool = False, *,
+                 prenorm: bool = False, final_mlp: bool = False,
+                 max_nstrides: int = 8,
+                 *,
                  key: jax.random.PRNGKeyArray):
 
         # get the embedding
@@ -241,6 +243,7 @@ class RNNNet(eqx.Module):
             assert nhiddens % num_heads == 0
             rnn_kwargs["num_heads"] = num_heads
             rnn_kwargs["hidden_size"] = nhiddens // num_heads
+            rnn_kwargs["max_nstrides"] = max_nstrides
         for i in range(nlayers):
             # get the rnn layer
             if bidirectional and not bidirasymm:
@@ -292,6 +295,111 @@ class RNNNet(eqx.Module):
             else:
                 x = sublayer0(ln0(x)) + x
                 x = sublayer1(ln1(x)) + x
+
+        if self.reduce_length:
+            x = jnp.mean(x, axis=0)  # (num_outs,)
+            lin1 = self.lin1
+        else:
+            lin1 = jax.vmap(self.lin1)
+        x = lin1(x)  # (num_outs,) or (length, num_outs)
+        return x
+
+class RNNNet2(eqx.Module):
+    # following the architecture from https://github.com/thjashin/multires-conv/blob/main/classification.py
+    embedding: Optional[eqx.Module]
+    lin0: eqx.nn.Linear
+    rnns: List[eqx.Module]
+    lns: List[eqx.Module]
+    mixings: List[eqx.Module]
+    drop0s: List[eqx.Module]
+    drop1s: List[eqx.Module]
+    lin1: eqx.nn.Linear
+    reduce_length: bool
+
+    def __init__(self, num_inps: int, num_outs: int, with_embedding: bool, reduce_length: bool,
+                 num_heads: int = 1, nhiddens: int = 64, nlayers: int = 8,
+                 method: str = "deer", rnn_type: str = "gru",
+                 p_dropout: float = 0.0,
+                 bidirectional: bool = False, bidirasymm: bool = False,
+                 max_nstrides: int = 8,
+                 *,
+                 key: jax.random.PRNGKeyArray):
+
+        # get the embedding
+        if with_embedding:
+            key, subkey = jax.random.split(key, 2)
+            self.embedding = eqx.nn.Embedding(num_inps, nhiddens, key=subkey)
+            num_inps = nhiddens
+        else:
+            self.embedding = None
+
+        self.reduce_length = reduce_length
+        key, *subkey = jax.random.split(key, 4)
+        self.lin0 = eqx.nn.Linear(num_inps, nhiddens, key=subkey[0])
+        self.lin1 = eqx.nn.Linear(nhiddens, num_outs, key=subkey[1])
+
+        self.rnns = []
+        self.lns = []
+        self.mixings = []
+        self.drop0s = []
+        self.drop1s = []
+        key, *subkey = jax.random.split(key, nlayers + 1)
+        key, *subkey1 = jax.random.split(key, nlayers + 1)
+        rnn_kwargs = {
+            "input_size": nhiddens,
+            "hidden_size": nhiddens,
+            "method": method,
+            "rnn_type": rnn_type,
+        }
+        rnn_class = MultiScaleRNN if num_heads > 1 else RNN
+        if num_heads > 1:
+            assert nhiddens % num_heads == 0
+            rnn_kwargs["num_heads"] = num_heads
+            rnn_kwargs["hidden_size"] = nhiddens // num_heads
+            rnn_kwargs["max_nstrides"] = max_nstrides
+        for i in range(nlayers):
+            # get the rnn layer
+            if bidirectional and not bidirasymm:
+                # symmetric bidirectional
+                rnn = rnn_class(**rnn_kwargs, key=subkey[i])
+                rnn = Bidirectional(rnn, rnn)
+            elif bidirectional and bidirasymm:
+                # asymmetric bidirectional
+                subk = jax.random.split(subkey[i], 2)
+                rnn1 = rnn_class(**rnn_kwargs, key=subk[0])
+                rnn2 = rnn_class(**rnn_kwargs, key=subk[1])
+                rnn = Bidirectional(rnn1, rnn2)
+            else:
+                # unidirectional
+                rnn = rnn_class(**rnn_kwargs, key=subkey[i])
+            self.rnns.append(rnn)
+
+            self.lns.append(eqx.nn.LayerNorm(nhiddens))
+            self.mixings.append(eqx.nn.Linear(nhiddens, 2 * nhiddens, key=subkey1[i]))
+            self.drop0s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
+            self.drop1s.append(eqx.nn.Dropout(p_dropout) if p_dropout > 0.0 else eqx.nn.Identity())
+
+    def __call__(self, x: jnp.ndarray, key: jax.random.PRNGKeyArray, inference: bool) -> jnp.ndarray:
+        # x: (length, num_inps) if not with_embedding else (length,) int
+        # returns: (length, num_outs)
+        if self.embedding is not None:
+            x = jax.vmap(self.embedding)(x)
+
+        x = jax.vmap(self.lin0)(x)
+
+        key, *subkey = jax.random.split(key, 2 * len(self.rnns) + 1)
+        for i in range(len(self.rnns)):
+            rnn = self.rnns[i]
+            mixing = jax.vmap(self.mixings[i])
+            ln = jax.vmap(self.lns[i])
+            drop0 = self.drop0s[i]
+            drop1 = self.drop1s[i]
+
+            x0 = rnn(x)
+            x1 = drop0(x0, key=subkey[2 * i + 0], inference=inference)
+            x2 = jax.nn.glu(mixing(x1))
+            x3 = drop1(x2, key=subkey[2 * i + 1], inference=inference)
+            x = ln(x3 + x)
 
         if self.reduce_length:
             x = jnp.mean(x, axis=0)  # (num_outs,)
