@@ -64,6 +64,7 @@ model_kwargs = {
             ("p_dropout", float, None),
             ("prenorm", bool, False),
             ("final_mlp", bool, False),
+            ("max_nstrides", int, 8),
         ],
     },
 }

@@ -89,14 +89,14 @@ class MultiScaleRNN(eqx.Module):
     num_heads: int
 
     def __init__(self, input_size: int, hidden_size: int, num_heads: int = 8, use_bias: bool = True,
-                 method: str = "deer", rnn_type: str = "gru", *, 
+                 method: str = "deer", rnn_type: str = "gru", max_nstrides: int = 8, *,
                  key: jax.random.PRNGKeyArray, **kwargs):
         key, *subkey = jax.random.split(key, num_heads + 1)
         self.hidden_size = hidden_size
         # rnns = [RNN(input_size, hidden_size, use_bias, method, rnn_type, key=subkey[i], **kwargs)
         #              for i in range(num_heads)]
         rnns_params = []
-        m = 8
+        m = max_nstrides
         for i in range(num_heads):
             rnn = RNN(input_size, hidden_size, use_bias, method, rnn_type, key=subkey[i], **kwargs)
             rnn_params, rnn_static = eqx.partition(rnn, eqx.is_inexact_array)
@@ -124,7 +124,7 @@ class MultiScaleRNN(eqx.Module):
         def apply_rnn(x: jnp.ndarray, rnn_params: Any) -> jnp.ndarray:
             # x: (nskips, length // nskips, input_size)
             rnn = eqx.combine(rnn_params, self.rnn_static)
-            return jax.vmap(rnn)(x)
+            return jax.vmap(rnn)(x)  # (nskips, length // nskips, hidden_size)
 
         outputs = []
         for i, rnn_params in enumerate(self.rnn_params):
