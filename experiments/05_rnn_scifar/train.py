@@ -26,7 +26,11 @@ def calc_loss(model_params, model_static, loss_fn: Callable[[jnp.ndarray, jnp.nd
     # output: (batch_size, length, output_size)
     output = jax.vmap(model, in_axes=(0, None, None))(input, key, inference)
     # output = jax.vmap(model)(input)
-    loss = jnp.mean(jax.vmap(loss_fn)(output, target))
+    if inference:
+        loss = jax.tree_util.tree_map(jnp.sum, jax.vmap(loss_fn)(output, target))
+    else:
+        loss = jax.tree_util.tree_map(jnp.mean, jax.vmap(loss_fn)(output, target))
+    # loss = jnp.mean(jax.vmap(loss_fn)(output, target))
     return loss
 
 @partial(jax.jit, static_argnames=("model_static", "loss_fn", "optimizer"))
@@ -138,6 +142,7 @@ def train():
         # evaluate the validation dataset
         tot_loss = 0
         tot_count = 0
+        tot_diag_losses = None
         for batch_tensor in (vbar := tqdm(val_dloader, leave=False)):
             key, subkey = jax.random.split(key, 2)
             # get the batch in jax
@@ -148,7 +153,17 @@ def train():
             loss = calc_loss(model_params, model_static, case.val_loss_fn, batch,
                              key=subkey, inference=True,
                              )
-            tot_loss = tot_loss + loss * ndata
+            if isinstance(loss, tuple):
+                loss, diag_losses = loss
+                if tot_count == 0:
+                    tot_diag_losses = diag_losses
+                    tot_loss = loss
+                else:
+                    tot_diag_losses = jax.tree_util.tree_map(jnp.add, tot_diag_losses, diag_losses)
+                    tot_loss += loss
+            else:
+                tot_loss += loss
+            # tot_loss = tot_loss + loss * ndata
             tot_count = tot_count + ndata
 
             vbar.set_description(f"Epoch {iepoch} val loss: {tot_loss / tot_count:.3e}")
@@ -157,6 +172,18 @@ def train():
         val_loss = tot_loss / tot_count
         summary_writer.add_scalar("loss/val", val_loss, isteps)
         iepoch += 1
+
+        # write the additional diagnostics
+        if tot_diag_losses is not None:
+            mean_diag_losses = jax.tree_util.tree_map(lambda x: x / tot_count, tot_diag_losses)
+            if isinstance(mean_diag_losses, dict):
+                for name, valdiag in mean_diag_losses.items():
+                    summary_writer.add_scalar(f"loss/{name}", valdiag, isteps)
+            elif isinstance(mean_diag_losses, (tuple, list)):
+                for ival, valdiag in enumerate(mean_diag_losses):
+                    summary_writer.add_scalar(f"loss/val_{ival}", valdiag, isteps)
+            else:
+                raise TypeError(f"Unknown diag losses: {type(mean_diag_losses)}")
 
         # save the best model
         if val_loss < best_val_loss:
