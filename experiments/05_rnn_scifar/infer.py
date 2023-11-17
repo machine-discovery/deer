@@ -57,10 +57,10 @@ def infer():
         ndata = len(batch[0])
 
         # evaluate the model
-        loss = calc_loss(model_params, model_static, case.val_loss_fn, batch,
+        loss = calc_loss(model_params, model_static, case.test_loss_fn, batch,
                          key=subkey, inference=True)
 
-        tot_loss = tot_loss + loss * ndata
+        tot_loss = tot_loss + loss
         tot_count = tot_count + ndata
 
         tbar.set_description(f"Test: {tot_loss / tot_count:.3e}")

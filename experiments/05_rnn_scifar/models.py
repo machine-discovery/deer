@@ -32,7 +32,7 @@ def eval_rnn_deer(carry: jnp.ndarray, inputs: jnp.ndarray, rnn_params, rnn_stati
         return gru(inputs, carry)
 
     # seq1dm = jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)
-    outputs = seq1d(call_gru2, carry, inputs, rnn_params)
+    outputs = seq1d(call_gru2, carry, inputs, rnn_params, memory_efficient=True)
     return outputs
 
 class DualStatesWrapper(eqx.Module):
