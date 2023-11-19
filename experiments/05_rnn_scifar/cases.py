@@ -77,7 +77,8 @@ class ToSequential(torch.nn.Module):
         return x.reshape(-1, x.shape[-1])
 
 class SeqCIFAR10(Case):
-    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10"), val_pct: float = 0.2, normtype: int = 1):
+    def __init__(self, rootdir: str = os.path.join(FDIR, "data", "cifar10"), val_pct: float = 0.2, normtype: int = 1,
+                 random_hflip: bool = False):
         np.random.seed(123)
         if normtype == 1:
             std = (0.2470, 0.2435, 0.2616)
@@ -85,25 +86,30 @@ class SeqCIFAR10(Case):
             std = (0.2023, 0.1994, 0.2010)
         else:
             raise ValueError(f"Invalid normtype: {normtype}")
-        tfms = v2.Compose([
+        tfms_val = [
             v2.PILToTensor(),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize((0.4914, 0.4822, 0.4465), std),
             ToChannelLast(),
             ToSequential(),
-        ])
+        ]
+        tfms_train = ([v2.RandomHorizontalFlip(p=0.5)] if random_hflip else []) + tfms_val
+        tfms_val = v2.Compose(tfms_val)
+        tfms_train = v2.Compose(tfms_train)
         target_tfm = v2.ToDtype(torch.long)
-        self._train = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms, target_transform=target_tfm,
+        self._train = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms_train, target_transform=target_tfm,
                                                    train=True, download=True)
-        self._test = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms, target_transform=target_tfm,
+        self._vtrain = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms_val, target_transform=target_tfm,
+                                                    train=True, download=False)
+        self._test = torchvision.datasets.CIFAR10(root=rootdir, transform=tfms_val, target_transform=target_tfm,
                                                   train=False, download=True)
         self._ntrain = int((1 - val_pct) * len(self._train))
 
         # get the train and validation indices
         all_train_idxs = np.arange(len(self._train))
         np.random.shuffle(all_train_idxs)
-        self._train_idxs = all_train_idxs[:self._ntrain]
-        self._val_idxs = all_train_idxs[self._ntrain:]
+        self._train_idxs = set(all_train_idxs[:self._ntrain])
+        self._val_idxs = set(all_train_idxs[self._ntrain:])
 
     @property
     def with_embedding(self) -> bool:
@@ -126,7 +132,10 @@ class SeqCIFAR10(Case):
 
     def __getitem__(self, i: int) -> Tuple[torch.Tensor, torch.Tensor]:
         if i < len(self._train):
-            img, target = self._train[i]
+            if i in self._train_idxs:
+                img, target = self._train[i]
+            else:
+                img, target = self._vtrain[i]
         else:
             img, target = self._test[i - len(self._train)]
         return img, target
@@ -150,12 +159,17 @@ class SeqCIFAR10(Case):
 
     @property
     def train_idxs(self) -> jnp.ndarray:
-        return jnp.array(self._train_idxs)
+        return jnp.array(list(self._train_idxs))
 
     @property
     def val_idxs(self) -> jnp.ndarray:
-        return jnp.array(self._val_idxs)
+        return jnp.array(list(self._val_idxs))
 
     @property
     def test_idxs(self) -> jnp.ndarray:
         return jnp.array(list(range(len(self._train), len(self))))
+
+if __name__ == "__main__":
+    case = SeqCIFAR10(val_pct=0.1, normtype=2)
+    for i in range(20):
+        print(case[i][1])

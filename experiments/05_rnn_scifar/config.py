@@ -90,6 +90,7 @@ case_kwargs = {
             ("rootdir", str, "data/cifar10"),
             ("val_pct", float, 0.2),
             ("normtype", int, 1),
+            ("random_hflip", bool, False),
         ],
     },
 }
