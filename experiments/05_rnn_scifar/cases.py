@@ -1,4 +1,4 @@
-from typing import Tuple, List, Dict, Any, Union
+from typing import Tuple, List, Dict, Any, Union, Sequence
 import os
 from abc import ABC, abstractmethod, abstractproperty
 import jax.numpy as jnp
@@ -56,15 +56,15 @@ class Case(ABC, torch.utils.data.Dataset):
         return val
 
     @abstractproperty
-    def train_idxs(self) -> jnp.ndarray:
+    def train_idxs(self) -> Sequence[int]:
         pass  # (num_train,) int
 
     @abstractproperty
-    def val_idxs(self) -> jnp.ndarray:
+    def val_idxs(self) -> Sequence[int]:
         pass  # (num_val,) int
 
     @abstractproperty
-    def test_idxs(self) -> jnp.ndarray:
+    def test_idxs(self) -> Sequence[int]:
         pass  # (num_test,) int
 
 class ToChannelLast(torch.nn.Module):
@@ -158,16 +158,16 @@ class SeqCIFAR10(Case):
         return (jnp.argmax(output) == target)
 
     @property
-    def train_idxs(self) -> jnp.ndarray:
-        return jnp.array(list(self._train_idxs))
+    def train_idxs(self) -> Sequence[int]:
+        return list(self._train_idxs)
 
     @property
-    def val_idxs(self) -> jnp.ndarray:
-        return jnp.array(list(self._val_idxs))
+    def val_idxs(self) -> Sequence[int]:
+        return list(self._val_idxs)
 
     @property
-    def test_idxs(self) -> jnp.ndarray:
-        return jnp.array(list(range(len(self._train), len(self))))
+    def test_idxs(self) -> Sequence[int]:
+        return list(range(len(self._train), len(self)))
 
 if __name__ == "__main__":
     case = SeqCIFAR10(val_pct=0.1, normtype=2)

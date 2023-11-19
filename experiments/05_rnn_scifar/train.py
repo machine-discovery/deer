@@ -1,5 +1,6 @@
 from typing import Tuple, Callable
 import os
+import numpy as np
 import shutil
 import pickle
 import argparse
@@ -120,7 +121,7 @@ def train():
         key, *subkey = jax.random.split(key, 3)
 
         # start a new epoch by shuffling the train idxs
-        train_idxs = jax.random.permutation(subkey[0], case.train_idxs)  # (num_train,)
+        train_idxs = np.array(jax.random.permutation(subkey[0], jnp.array(case.train_idxs)))  # (num_train,)
         train_dset = torch.utils.data.Subset(case, train_idxs)
         train_dloader = torch.utils.data.DataLoader(train_dset, batch_size=batch_size, shuffle=False)
         for batch_tensor in (tbar := tqdm(train_dloader, leave=False)):
