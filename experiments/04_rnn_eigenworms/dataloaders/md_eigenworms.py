@@ -24,6 +24,8 @@ class EigenWormsDataModule(pl.LightningDataModule):
             self.train_file = "lem_split/eigenworms_train.pkl"
             self.val_file = "lem_split/eigenworms_val.pkl"
             self.test_file = "lem_split/eigenworms_test.pkl"
+        else:
+            raise RuntimeError()
 
     def prepare_data(self):
         pass
@@ -35,18 +37,24 @@ class EigenWormsDataModule(pl.LightningDataModule):
                 self._train_dataset = TensorDataset(x, y)
             elif self.datafile == "lem":
                 self._train_dataset = pickle.load(f)
+            else:
+                raise RuntimeError()
         with open(self.val_file, "rb") as f:
             if self.datafile == "neuralrde":
                 x, y = pickle.load(f)
                 self._val_dataset = TensorDataset(x, y)
             elif self.datafile == "lem":
                 self._val_dataset = pickle.load(f)
+            else:
+                raise RuntimeError()
         with open(self.test_file, "rb") as f:
             if self.datafile == "neuralrde":
                 x, y = pickle.load(f)
                 self._test_dataset = TensorDataset(x, y)
             elif self.datafile == "lem":
                 self._test_dataset = pickle.load(f)
+            else:
+                raise RuntimeError()
         print('LEN TRAIN DATASET', len(self._train_dataset))
         print('LEN VAL DATASET', len(self._val_dataset))
         print('LEN TEST DATASET', len(self._test_dataset))
