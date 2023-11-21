@@ -166,7 +166,7 @@ def main():
         true_labels.extend(batch[1].tolist())
         pred_labels.extend(preds.tolist())
     test_acc /= ntest
-    print(f"Version {args.version} with {dtype} and nchannel={nchannel}: Total number of test samples: {ntest}. Total number of correct predictions: {test_acc * ntest}. Accuracy: {test_acc}")
+    print(f"Version {args.version} with {dtype}: Total number of test samples: {ntest}. Total number of correct predictions: {test_acc * ntest}. Accuracy: {test_acc}")
     print("")
     cm = confusion_matrix(true_labels, pred_labels)
     print(cm)
