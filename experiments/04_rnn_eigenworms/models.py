@@ -269,9 +269,6 @@ class LEMCell(eqx.Module):
     def __init__(self, ninp: int, nhid: int, dt: float, key: prng.PRNGKeyArray):
         keys = jax.random.split(key, 3)
         self.dt = dt
-        # self.inp2hid = eqx.nn.Linear(ninp, 4 * nhid, key=keys[0])
-        # self.hid2hid = eqx.nn.Linear(nhid, 3 * nhid, key=keys[1])
-        # self.transform_z = eqx.nn.Linear(nhid, nhid, key=keys[2])
         self.inp2hid = Linear(ninp, 4 * nhid, key=keys[0], init_method="he_normal")
         self.hid2hid = Linear(nhid, 3 * nhid, key=keys[1], init_method="he_normal")
         self.transform_z = Linear(nhid, nhid, key=keys[2], init_method="he_normal")
@@ -308,10 +305,8 @@ class LEM(eqx.Module):
         self.use_scan = use_scan
 
     def __call__(self, inputs: jnp.ndarray, yz0: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        # y0.shape == (nbatch, nstate)
-        # z0.shape == (nbatch, nstate)
+        # yz0.shape == (nbatch, nstate * 2)
         # inputs.shape == (nbatch, ninp)
-        # assert len(inputs.shape) == len(y0.shape) == len(z0.shape)
 
         yzstates = vmap_to_shape(self.lem, inputs.shape)(inputs, yz0)
         return yzstates, yzstates
