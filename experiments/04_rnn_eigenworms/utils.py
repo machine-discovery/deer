@@ -44,12 +44,17 @@ def compute_metrics(
 
 def get_datamodule(
     dset: str,
-    batch_size: int
+    batch_size: int,
+    datafile: str = "neuralrde"
 ) -> pl.LightningDataModule:
     dset = dset.lower()
+    datafile = datafile.lower()
+    if datafile not in ["neuralrde", "lem"]:
+        raise NotImplementedError()
     if dset == "eigenworms":
         return EigenWormsDataModule(
             batch_size=batch_size,  # nseq = 17984, nclass = 5
+            datafile=datafile
         )
     else:
         return NotImplementedError("only eigenworms dataset is available")
