@@ -51,17 +51,6 @@ class EigenWormsDataModule(pl.LightningDataModule):
         print('LEN VAL DATASET', len(self._val_dataset))
         print('LEN TEST DATASET', len(self._test_dataset))
 
-    # def setup(self, stage=None):
-    #     with open(self.train_file, "rb") as f:
-    #         self._train_dataset = pickle.load(f)
-    #     with open(self.val_file, "rb") as f:
-    #         self._val_dataset = pickle.load(f)
-    #     with open(self.test_file, "rb") as f:
-    #         self._test_dataset = pickle.load(f)
-    #     print('LEN TRAIN DATASET', len(self._train_dataset))
-    #     print('LEN VAL DATASET', len(self._val_dataset))
-    #     print('LEN TEST DATASET', len(self._test_dataset))
-
     def train_dataloader(self):
         train_dataloader = DataLoader(
             self._train_dataset,
