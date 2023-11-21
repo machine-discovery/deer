@@ -313,7 +313,7 @@ class LEM(eqx.Module):
 
 
 class ScaledLEM(eqx.Module):
-    lems: List[List[GRU]]
+    lems: LEM
     classifier: MLP
     use_scan: bool
 
