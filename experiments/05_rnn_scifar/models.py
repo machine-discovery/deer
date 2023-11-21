@@ -32,7 +32,7 @@ def eval_rnn_deer(carry: jnp.ndarray, inputs: jnp.ndarray, rnn_params, rnn_stati
         return gru(inputs, carry)
 
     # seq1dm = jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)
-    outputs = seq1d(call_gru2, carry, inputs, rnn_params, memory_efficient=False)
+    outputs = seq1d(call_gru2, carry, inputs, rnn_params, memory_efficient=True)
     return outputs
 
 class DualStatesWrapper(eqx.Module):
@@ -128,9 +128,12 @@ class MultiScaleRNN(eqx.Module):
 
         outputs = []
         for i, rnn_params in enumerate(self.rnn_params):
-            xx = x.reshape(2 ** i, -1, xshape[-1])
+            xx = x.reshape(-1, 2 ** i, xshape[-1])  # (length // nskips, nskips, input_size)
+            xx = jnp.moveaxis(xx, 0, 1)  # (nskips, length // nskips, input_size)
+            # xx = x.reshape(2 ** i, -1, xshape[-1])
             # output: (nrnns, nskips, length // nskips, hidden_size)
             out = jax.vmap(apply_rnn, in_axes=(None, self.rnn_params_vmap))(xx, rnn_params)
+            out = jnp.moveaxis(out, 1, 2)  # (nrnns, length // nskips, nskips, hidden_size)
             out = out.reshape(out.shape[0], -1, self.hidden_size)  # (nrnns, length, hidden_size)
             out = jnp.moveaxis(out, 0, 1)  # (length, nrnns, hidden_size)
             out = out.reshape(out.shape[0], -1)  # (length, nrnns * hidden_size)
@@ -392,13 +395,15 @@ class RNNNet2(eqx.Module):
             rnn = self.rnns[i]
             mixing = jax.vmap(self.mixings[i])
             ln = jax.vmap(self.lns[i])
-            drop0 = self.drop0s[i]
-            drop1 = self.drop1s[i]
+            drop0_raw = lambda x, key, inference: self.drop0s[i](x, key=key, inference=inference)
+            drop1_raw = lambda x, key, inference: self.drop1s[i](x, key=key, inference=inference)
+            drop0 = jax.vmap(drop0_raw, in_axes=(0, None, None))
+            drop1 = jax.vmap(drop1_raw, in_axes=(0, None, None))
 
             x0 = rnn(x)
-            x1 = drop0(x0, key=subkey[2 * i + 0], inference=inference)
+            x1 = drop0(x0, subkey[2 * i + 0], inference)
             x2 = jax.nn.glu(mixing(x1))
-            x3 = drop1(x2, key=subkey[2 * i + 1], inference=inference)
+            x3 = drop1(x2, subkey[2 * i + 1], inference)
             x = ln(x3 + x)
 
         if self.reduce_length:
