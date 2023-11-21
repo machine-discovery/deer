@@ -140,7 +140,7 @@ def main():
     params, static = eqx.partition(model, eqx.is_array)
     print(f"Total parameter count: {count_params(params)}")
 
-    dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
+    dm = get_datamodule(dset=args.dset, batch_size=args.batch_size, datafile="lem")
     dm.setup()
     inference_model = eqx.combine(params, static)
     inference_model = eqx.tree_inference(inference_model, value=True)

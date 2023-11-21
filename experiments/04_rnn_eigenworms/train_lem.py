@@ -185,7 +185,7 @@ def main():
 
     # training loop
     step = 0
-    dm = get_datamodule(dset=args.dset, batch_size=args.batch_size)
+    dm = get_datamodule(dset=args.dset, batch_size=args.batch_size, datafile="lem")
     dm.setup()
     best_val_acc = 0
     best_val_loss = float("inf")
