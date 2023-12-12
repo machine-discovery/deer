@@ -1,6 +1,6 @@
 general:
   batch_size: 32
-  max_steps: 100_000
+  max_steps: 250_000
 
 optimizer:
 - name: clip_by_global_norm
@@ -12,8 +12,8 @@ optimizer:
     init_value: 1e-7
     peak_value: 2e-3
     final_value: 1e-7
-    warmup_steps: 10_000
-    decay_steps: 90_000
+    warmup_steps: 25_000
+    decay_steps: 225_000
 
 case:
   name: scifar10
@@ -29,5 +29,5 @@ model:
   method: deer
   p_dropout: 0.1
   # rnn_wrapper: 1
-  # bidirectional: 1
+  bidirectional: 1
   rnn_type: gru
