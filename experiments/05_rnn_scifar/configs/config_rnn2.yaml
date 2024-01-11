@@ -1,6 +1,6 @@
 general:
   batch_size: 32
-  max_steps: 250_000
+  max_steps: 500_000
 
 optimizer:
 - name: clip_by_global_norm
@@ -12,8 +12,8 @@ optimizer:
     init_value: 1e-7
     peak_value: 2e-3
     final_value: 1e-7
-    warmup_steps: 25_000
-    decay_steps: 225_000
+    warmup_steps: 50_000
+    decay_steps: 450_000
 
 case:
   name: scifar10
