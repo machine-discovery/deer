@@ -1,0 +1,14 @@
+0: 64 hiddens, 8 heads, 64 hiddens mlp, scifar on adam-onecyclelr(1e-5 to 6e-4 to 1e-6 in 100k + 160k) (182,154 params)
+1 & 4: like 0, but bidirectional (slightly better than #0)
+5: like 0, but wrap with lin+act+lin+glu (slightly worse than #0, very early stopped)
+6: like 0, but adam(6e-4)
+7: like 0, but adam(6e-4) and batch size = 64
+8: like 0, but adam(6e-4) and p_dropout = 0.1
+9: 
+
+
+scaling:
+* use A100
+* use onecyclelr
+* mlp larger hidden size
+* more heads
