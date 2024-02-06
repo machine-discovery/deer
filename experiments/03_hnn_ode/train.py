@@ -15,6 +15,7 @@ import numpy as np
 import scipy.integrate
 from deer.seq1d import solve_ivp
 from PIL import Image
+from mshooting import odeint_mshooting
 
 # enable float 64
 jax.config.update('jax_enable_x64', True)
@@ -129,6 +130,8 @@ def rollout(model: HNNModule, params: Any, y0: jnp.ndarray, tpts: jnp.ndarray, y
     model_func = lambda y, x, params: get_hnn_dynamics(model, params, y)
     if method == "deer":
         return solve_ivp(model_func, y0, tpts[..., None], params, tpts, yinit_guess=yinit_guess)
+    elif method == "mshooting":
+        return odeint_mshooting(model_func, y0, tpts, params)
     else:
         return odeint(model_func, y0, tpts, params)
 
