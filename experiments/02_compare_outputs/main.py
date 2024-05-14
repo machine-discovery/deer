@@ -4,39 +4,58 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import numpy as np
-import flax.linen
+import equinox as eqx
 import matplotlib.pyplot as plt
 from deer.seq1d import seq1d
+
 
 def compare_outputs(
         nh: int = 32,
         nsequence: int = 10000,
         seed: int = 0,
+        batch_size: int = 2,  # changing batch_size to 1 makes the outputs not identical
         dtype: Any = jnp.float32):
 
-    gru = flax.linen.GRUCell(features=nh, dtype=dtype, param_dtype=dtype)
+    key = jax.random.PRNGKey(seed)
+    key, *subkey = jax.random.split(key, 3)
+    gru = eqx.nn.GRUCell(nh, nh, key=subkey[0])
+    # split the module into parameters and static parts
+    gru_params, gru_static = eqx.partition(gru, eqx.is_array)
+    gru_params = jax.tree_util.tree_map(lambda x: x.astype(dtype) if x is not None else x, gru_params)
+
     key = jax.random.PRNGKey(seed)
     key, *subkey = jax.random.split(key, 3)
 
-    carry = gru.initialize_carry(subkey[0], (1, nh))  # (batch_size, nh)
-    inputs = jax.random.normal(subkey[1], (nsequence, 1, nh), dtype=dtype)  # (nsequence, batch_size, nh)
-    params = gru.init(key, carry, inputs[0])
+    carry = jnp.zeros((batch_size, nh), dtype=dtype)
+    inputs = jax.random.normal(subkey[1], (nsequence, batch_size, nh), dtype=dtype)  # (nsequence, batch_size, nh)
 
     @jax.jit
     def func1(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any) -> jnp.ndarray:
-        carry, outputs = jax.lax.scan(partial(gru.apply, params), carry, inputs)
+        gru = eqx.combine(gru_params, gru_static)
+        gru_method = jax.vmap(gru, in_axes=0, out_axes=0)
+
+        def call_gru1(carry: jnp.ndarray, inputs: jnp.ndarray):
+            output = gru_method(inputs, carry)
+            return output, output
+
+        _, outputs = jax.lax.scan(call_gru1, carry, inputs)
         return outputs  # (nsequence, batch_size, nh)
 
     @jax.jit
     def func2(carry: jnp.ndarray, inputs: jnp.ndarray, params: Any) -> jnp.ndarray:
-        gru_func = lambda carry, inputs, params: gru.apply(params, carry, inputs)[0]
-        return jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)(gru_func, carry, inputs, params)
+        def call_gru2(carry: jnp.ndarray, inputs: jnp.ndarray, params):
+            gru = eqx.combine(params, gru_static)
+            return gru(inputs, carry)
+
+        seq1dm = jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)
+        outputs = seq1dm(call_gru2, carry, inputs, gru_params)
+        return outputs
 
     # compile
-    _ = func1(carry, inputs, params)
-    _ = func2(carry, inputs, params)
-    y1 = func1(carry, inputs, params)[:, 0, 0]  # (nsequence,)
-    y2 = func2(carry, inputs, params)[:, 0, 0]  # (nsequence,)
+    _ = func1(carry, inputs, gru_params)
+    _ = func2(carry, inputs, gru_params)
+    y1 = func1(carry, inputs, gru_params)[:, 0, 0]  # (nsequence,)
+    y2 = func2(carry, inputs, gru_params)[:, 0, 0]  # (nsequence,)
 
     label_fontsize = 14
     legend_fontsize = 12

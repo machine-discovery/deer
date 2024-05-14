@@ -3,15 +3,14 @@ The official repository of "Parallelizing non-linear sequential models over the 
 
 ## Installation
 
-The experiment we ran uses JAX 0.4.11, which runs fine.
-However, when we tried using the latest JAX (0.4.16), it raises an error.
-So we highly recommend to install the exact same version as ours for compatibility and reproducibility.
-Here are the commands to use the same versions as ours:
-
 ```
+pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 pip install --upgrade -e .
-pip install --upgrade jax==0.4.11 jaxlib==0.4.11+cuda11.cudnn86 -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-pip install nvidia-cudnn-cu11==8.6.0.163
+```
+
+If you want to replicate the experimental result, you can install this package by:
+```
+pip install --upgrade -e .[replication]
 ```
 
 ## Getting started
