@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 
 @partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 4, 10, 11, 12))
-def deer_iteration(
+def deer_mode2_iteration(
         lin: Callable[[jnp.ndarray, Any], jnp.ndarray],
         inv_lin: Callable[[jnp.ndarray, List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[jnp.ndarray, List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -76,7 +76,7 @@ def deer_iteration(
     """
     # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
     # which is less efficient than lax.cond
-    return deer_iteration_helper(
+    return deer_mode2_iteration_helper(
         lin=lin,
         inv_lin=inv_lin,
         func=func,
@@ -92,7 +92,7 @@ def deer_iteration(
         clip_ytnext=clip_ytnext)[0]
 
 
-def deer_iteration_helper(
+def deer_mode2_iteration_helper(
         lin: Callable[[jnp.ndarray, Any], jnp.ndarray],
         inv_lin: Callable[[jnp.ndarray, List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[jnp.ndarray, List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -111,7 +111,6 @@ def deer_iteration_helper(
     vmap_axes = (0, 0, 0, None)
     jacsfunc = jax.vmap(jax.jacfwd(func, argnums=(0, 1)), in_axes=vmap_axes)
     func2 = jax.vmap(func, in_axes=vmap_axes)
-    func2_partialy = lambda Ly, ytparams: func2(Ly, ytparams, xinput, params)
 
     dtype = yinit_guess.dtype
     # set the tolerance to be 1e-4 if dtype is float32, else 1e-7 for float64
@@ -126,10 +125,12 @@ def deer_iteration_helper(
         # yt: (nsamples, ny)
         ytparams = shifter_func(yt, shifter_func_params)
         jacs = jacsfunc(Ly, ytparams, xinput, params)  # both (nsamples, ny, ny)
-        jacLy, gts = jacs
+        jacLy, gts = jacs  # jacLy: (nsamples, ny, ny), gts: [p_num] + (nsamples, ny, ny)
         # rhs: (nsamples, ny)
         yf = func2(Ly, ytparams, xinput, params)
-        _, jy = jax.jvp(func2_partialy, (Ly, ytparams), (Ly, ytparams))
+        jy = jnp.einsum("...ij, ...j -> ...i", jacLy, Ly) + \
+            sum([jnp.einsum("...ij, ...j -> ...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
+        # _, jy = jax.jvp(func2_partialy, (Ly, ytparams), (Ly, ytparams))
         rhs = jax.tree_util.tree_map(lambda x, y: x - y, jy, yf)
         yt_next = inv_lin(jacLy, gts, rhs, inv_lin_params)  # (nsamples, ny)
 
@@ -161,8 +162,8 @@ def deer_iteration_helper(
     return yt, jacs
 
 
-@deer_iteration.defjvp
-def deer_iteration_jvp(
+@deer_mode2_iteration.defjvp
+def deer_mode2_iteration_jvp(
         # collect non-gradable inputs first
         lin: Callable[[jnp.ndarray, Any], jnp.ndarray],
         inv_lin: Callable[[jnp.ndarray, List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
@@ -179,7 +180,7 @@ def deer_iteration_jvp(
 
     # compute the iteration
     # yt: (nsamples, ny)
-    yt, jacs = deer_iteration_helper(
+    yt, jacs = deer_mode2_iteration_helper(
         lin=lin,
         inv_lin=inv_lin,
         func=func,
