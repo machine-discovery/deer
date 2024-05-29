@@ -23,6 +23,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.9",
     install_requires=[
+        "jaxlib>=0.4.28",
         "jax>=0.4.28",
         "numpy>=1.24.0",
         "scipy>=1.10.1",
