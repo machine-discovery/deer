@@ -10,7 +10,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               tpts: jnp.ndarray,
               yinit_guess: Optional[jnp.ndarray] = None,
               max_iter: int = 10000,
-              memory_efficient: bool = False,
+              memory_efficient: bool = True,
               ) -> jnp.ndarray:
     r"""
     Solve the initial value problem.
@@ -56,8 +56,15 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     if yinit_guess is None:
         yinit_guess = jnp.zeros((xinp.shape[0], y0.shape[-1]), dtype=xinp.dtype)
 
-    def func2(ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
-        return func(ylist[0], x, params)
+    def linfunc(y: jnp.ndarray, params: Any) -> jnp.ndarray:
+        # y: (nsamples, ny)
+        tpts, _ = params  # tpts: (nsamples,)
+        dydt1 = (y[1:] - y[:-1]) / (tpts[1:, None] - tpts[:-1, None])  # (nsamples - 1, ny)
+        dydt = jnp.concatenate((jnp.zeros_like(dydt1[:1]), dydt1), axis=0)
+        return dydt
+
+    def func2(dydt: jnp.ndarray, ylist: List[jnp.ndarray], x: jnp.ndarray, params: Any) -> jnp.ndarray:
+        return dydt - func(ylist[0], x, params)
 
     def shifter_func(y: jnp.ndarray, params: Any) -> List[jnp.ndarray]:
         # y: (nsamples, ny)
@@ -66,6 +73,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     # perform the deer iteration
     inv_lin_params = (tpts, y0)
     yt = deer_iteration(
+        lin=linfunc,
         inv_lin=solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
         inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=max_iter,
         memory_efficient=memory_efficient)
@@ -76,7 +84,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
           y0: jnp.ndarray, xinp: Any, params: Any,
           yinit_guess: Optional[jnp.ndarray] = None,
           max_iter: int = 10000,
-          memory_efficient: bool = False,
+          memory_efficient: bool = True,
           ) -> jnp.ndarray:
     r"""
     Solve the discrete sequential equation
@@ -120,9 +128,12 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     if yinit_guess is None:
         yinit_guess = jnp.zeros((xinp_flat.shape[0], y0.shape[-1]), dtype=xinp_flat.dtype)  # (nsamples, ny)
 
-    def func2(ylist: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
-        # ylist: (ny,)
-        return func(ylist[0], x, params)
+    def linfunc(y: jnp.ndarray, params: Any) -> jnp.ndarray:
+        return y
+
+    def func2(yl: jnp.ndarray, yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
+        # yshifts: (ny,)
+        return yl - func(yshifts[0], x, params)
 
     def shifter_func(y: jnp.ndarray, shifter_params: Any) -> List[jnp.ndarray]:
         # y: (nsamples, ny)
@@ -133,13 +144,14 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
 
     # perform the deer iteration
     yt = deer_iteration(
+        lin=linfunc,
         inv_lin=seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
         inv_lin_params=(y0,), shifter_func_params=(y0,),
         yinit_guess=yinit_guess, max_iter=max_iter, memory_efficient=memory_efficient, clip_ytnext=True)
     return yt
 
 
-def solve_ivp_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
+def solve_ivp_inv_lin(jacLy: jnp.ndarray, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                       inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
     """
     Inverse of the linear operator for solving the initial value problem.
@@ -184,7 +196,7 @@ def solve_ivp_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
     return yt
 
 
-def seq1d_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
+def seq1d_inv_lin(jacLy: jnp.ndarray, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                   inv_lin_params: Tuple[jnp.ndarray]) -> jnp.ndarray:
     """
     Inverse of the linear operator for solving the discrete sequential equation.
