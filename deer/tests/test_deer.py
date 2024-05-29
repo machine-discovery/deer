@@ -82,7 +82,7 @@ def test_solve_ivp():
         yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
         return jnp.sum(yt ** 2, axis=0)  # only sum over time
     jax.test_util.check_grads(
-        get_loss, (y0, params), order=1, modes=['rev'],
+        get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
@@ -183,7 +183,7 @@ def test_rnn_derivs(memory_efficient: bool):
         return hseq
 
     jax.test_util.check_grads(
-        get_loss, (h0, xinp, params), order=1, modes=['rev'],
+        get_loss, (h0, xinp, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 

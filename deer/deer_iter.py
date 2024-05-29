@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 
 
-@partial(jax.custom_vjp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -86,7 +86,7 @@ def deer_iteration_helper(
         xinput: Any,  # gradable
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
-        yinit_guess: jnp.ndarray,
+        yinit_guess: jnp.ndarray,  # gradable
         max_iter: int = 100,
         memory_efficient: bool = False,
         clip_ytnext: bool = False,
@@ -115,7 +115,7 @@ def deer_iteration_helper(
         # workaround for rnn
         if clip_ytnext:
             clip = 1e8
-            yt_next = jnp.clip(yt_next, a_min=-clip, a_max=clip)
+            yt_next = jnp.clip(yt_next, min=-clip, max=clip)
             yt_next = jnp.where(jnp.isnan(yt_next), 0.0, yt_next)
             # jax.debug.print("{iiter}", iiter=iiter)
             # jax.debug.print("gteival: {gteival}", gteival=jnp.max(jnp.abs(jnp.real(jnp.linalg.eigvals(gts[0])))))
@@ -139,21 +139,23 @@ def deer_iteration_helper(
     return yt, gts, func
 
 
-def deer_iteration_eval(
+@deer_iteration.defjvp
+def deer_iteration_jvp(
+        # collect non-gradable inputs first
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
         p_num: int,
-        params: Any,  # gradable
-        xinput: Any,  # gradable
-        inv_lin_params: Any,  # gradable
-        shifter_func_params: Any,  # gradable
-        yinit_guess: jnp.ndarray,  # gradable as 0
-        max_iter: int = 100,
-        memory_efficient: bool = False,
-        clip_ytnext: bool = False,
-        ) -> jnp.ndarray:
+        max_iter: int,
+        memory_efficient: bool,
+        clip_ytnext: bool,
+        # the meaningful arguments
+        primals, tangents):
+    params, xinput, inv_lin_params, shifter_func_params, yinit_guess = primals
+    grad_params, grad_xinput, grad_inv_lin_params, grad_shifter_func_params, grad_yinit_guess = tangents
+
     # compute the iteration
+    # yt: (nsamples, ny)
     yt, gts, func = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
@@ -167,48 +169,25 @@ def deer_iteration_eval(
         max_iter=max_iter,
         memory_efficient=memory_efficient,
         clip_ytnext=clip_ytnext,
-        )
-    # the function must be wrapped as a partial to be used in the reverse mode
-    resid = (yt, gts, xinput, params, inv_lin_params, shifter_func_params,
-             jax.tree_util.Partial(inv_lin), jax.tree_util.Partial(func),
-             jax.tree_util.Partial(shifter_func),
-             )
-    return yt, resid
+    )
 
+    # func2: (nsamples, ny) + (nsamples, ny) + any -> (nsamples, ny)
+    func2 = jax.vmap(func, in_axes=(0, 0, None))  # vmap for y & x
 
-def deer_iteration_bwd(
-        # collect non-gradable inputs first
-        inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
-        func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-        shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
-        p_num: int,
-        max_iter: int,
-        memory_efficient: bool,
-        clip_ytnext: bool,
-        # the meaningful arguments
-        resid: Any,
-        grad_yt: jnp.ndarray):
-    yt, gts, xinput, params, inv_lin_params, shifter_func_params, inv_lin, func, shifter_func = resid
-    func2 = jax.vmap(func, in_axes=(0, 0, None))
-
+    ytparams = shifter_func(yt, shifter_func_params)
     if gts is None:
         jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
         # recompute gts
-        ytparams = shifter_func(yt, shifter_func_params)
         gts = [-gt for gt in jacfunc(ytparams, xinput, params)]
-
     # gts: [p_num] + (nsamples, ny, ny)
-    # func2: (nsamples, ny) + (nsamples, ny) + any -> (nsamples, ny)
+
+    # compute df (grad_func)
+    func2_params_xinput = partial(func2, ytparams)
+    _, grad_func = jax.jvp(func2_params_xinput, (xinput, params), (grad_xinput, grad_params))
+
+    # apply L_G^{-1} to the df
     rhs0 = jnp.zeros_like(gts[0][..., 0])  # (nsamples, ny)
-    _, inv_lin_dual = jax.vjp(inv_lin, gts, rhs0, inv_lin_params)
-    _, grad_rhs, grad_inv_lin_params = inv_lin_dual(grad_yt)
-    # grad_rhs: (nsamples, ny)
-    ytparams = shifter_func(yt, shifter_func_params)
-    _, func_vjp = jax.vjp(func2, ytparams, xinput, params)
-    _, grad_xinput, grad_params = func_vjp(grad_rhs)
-    # TODO: think about how to compute the gradient of the shifter_func_params?
-    grad_shifter_func_params = None
-    return grad_params, grad_xinput, grad_inv_lin_params, grad_shifter_func_params, None
+    inv_lin2 = partial(inv_lin, gts)
+    _, grad_yt = jax.jvp(inv_lin2, (rhs0, inv_lin_params), (grad_func, grad_inv_lin_params))
 
-
-deer_iteration.defvjp(deer_iteration_eval, deer_iteration_bwd)
+    return yt, grad_yt
