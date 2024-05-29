@@ -1,0 +1,9 @@
+{
+    "deer": {
+      "desc": "",
+      "api": {
+        "solve_ivp": "Solve initial value problem (IVP)",
+        "seq1d": "Evaluating discrete sequential model"
+      }
+    }
+}

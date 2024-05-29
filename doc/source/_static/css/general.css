@@ -1,0 +1,34 @@
+/* inline code or internal link to pyobj */
+.rst-content code {
+    border: 0px;
+    font-size: 85%;
+    padding: 2px 2px;
+    background-color: transparent;
+}
+.rst-content code.xref {
+    text-decoration: underline;
+}
+.pre {
+    color: #404040;
+}
+
+/* code-block */
+.highlight {
+    background: #f7f7f7;
+}
+
+/* the arguments */
+em.sig-param span.n span.pre {
+    font-weight: 600;
+    color: #505050;
+}
+/* the arguments' type */
+em.sig-param span.n:nth-child(4) span.pre {
+    font-weight: normal;
+    color: #2980b9;
+}
+/* the arguments' default value */
+em.sig-param span.default_value span.pre {
+    font-weight: 600;
+    color: #2980b9;
+}

@@ -12,25 +12,35 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               max_iter: int = 10000,
               memory_efficient: bool = False,
               ) -> jnp.ndarray:
-    """
-    Solve the initial value problem dy/dt = func(y, x, params) with y(0) = y0.
+    r"""
+    Solve the initial value problem.
+    
+    .. math::
+
+        \frac{dy}{dt} = f(y, x; \theta)
+    
+    with given initial condition :math:`y(0) = y_0`,
+    where :math:`y` is the output signal, :math:`x` is the input signal, and :math:`params` is the parameters
+    of the function.
+    This function will return the output signal :math:`y` at the time points :math:`t`.
 
     Arguments
     ---------
     func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray]
-        Function to evaluate the derivative of y with respect to t. The
-        arguments are: output signal y (ny,), input signal x (nx,), and parameters.
-        The return value is the derivative of y with respect to t (ny,).
+        Function to evaluate the derivative of :math:`y` with respect to :math:`t`. The
+        arguments are: output signal :math:`y` ``(ny,)``, input signal :math:`x` ``(nx,)``, and parameters in a pytree.
+        The return value is the derivative of :math:`y` with respect to :math:`t`, i.e., :math:`\frac{dy}{dt}`
+        ``(ny,)``.
     y0: jnp.ndarray
-        Initial condition on y (ny,).
+        Initial condition on :math:`y` ``(ny,)``.
     xinp: jnp.ndarray
-        The external input signal of shape (nsamples, nx)
+        The external input signal of shape ``(nsamples, nx)``.
     params: Any
         The parameters of the function ``func``.
     tpts: jnp.ndarray
-        The time points to evaluate the solution (nsamples,).
+        The time points to evaluate the solution ``(nsamples,)``.
     yinit_guess: jnp.ndarray or None
-        The initial guess of the output signal (nsamples, ny).
+        The initial guess of the output signal ``(nsamples, ny)``.
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
@@ -40,7 +50,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     Returns
     -------
     y: jnp.ndarray
-        The output signal as the solution of the non-linear differential equations (nsamples, ny).
+        The output signal as the solution of the non-linear differential equations ``(nsamples, ny)``.
     """
     # set the default initial guess
     if yinit_guess is None:
@@ -68,24 +78,32 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
           max_iter: int = 10000,
           memory_efficient: bool = False,
           ) -> jnp.ndarray:
-    """
-    Solve the discrete sequential equation, y[i + 1] = func(y[i], x[i], params) with the DEER framework.
+    r"""
+    Solve the discrete sequential equation
+
+    .. math::
+
+        y_{i + 1} = f(y_i, x_i; \theta)
+
+    where :math:`f` is a non-linear function, :math:`y_i` is the output signal at time :math:`i`,
+    :math:`x_i` is the input signal at time :math:`i`, and :math:`\theta` are the parameters of the function.
 
     Arguments
     ---------
     func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray]
-        Function to evaluate the next output signal y[i + 1] from the current output signal y[i].
-        The arguments are: output signal y (ny,), input signal x (*nx,) in a pytree, and parameters.
-        The return value is the next output signal y[i + 1] (ny,).
+        Function to evaluate the next output signal :math:`y_{i+1}` from the current output signal :math:`y_i`.
+        The arguments are: signal :math:`y` at the current time ``(ny,)``, input signal :math:`x` at the current time
+        ``(*nx,)`` in a pytree, and parameters in a pytree.
+        The return value is the next output signal :math:`y` at the next time ``(ny,)``.
     y0: jnp.ndarray
-        Initial condition on y (ny,).
+        Initial condition on :math:`y` ``(ny,)``.
     xinp: Any
-        The external input signal in a pytree of shape (nsamples, *nx)
+        The external input signal in a pytree of shape ``(nsamples, *nx)``
     params: Any
         The parameters of the function ``func``.
     yinit_guess: jnp.ndarray or None
-        The initial guess of the output signal (nsamples, ny).
-        If None, it will be initialized as 0s.
+        The initial guess of the output signal ``(nsamples, ny)``.
+        If ``None``, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
     memory_efficient: bool
@@ -94,7 +112,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     Returns
     -------
     y: jnp.ndarray
-        The output signal as the solution of the discrete difference equation (nsamples, ny),
+        The output signal as the solution of the discrete difference equation ``(nsamples, ny)``,
         excluding the initial states.
     """
     # set the default initial guess
