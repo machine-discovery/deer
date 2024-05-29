@@ -1,4 +1,5 @@
 import sys
+import argparse
 from typing import Callable, Sequence, Any
 import itertools
 from functools import partial
@@ -106,12 +107,12 @@ def func_benchmark(
     print("Max relative error:", jnp.max(jnp.abs((x1 - x2) / x1.at[x1 == 0.0].set(1e-8))))
     print("Max absolute error:", jnp.max(jnp.abs((x1 - x2))))
     print("Max and min of x1:", jnp.max(x1), jnp.min(x1))
-    rel_errs = jax.tree_map(compute_rel_error, grad1, grad2)
-    max_rel_err_per_tensor = jax.tree_map(jnp.max, rel_errs)
+    rel_errs = jax.tree_util.tree_map(compute_rel_error, grad1, grad2)
+    max_rel_err_per_tensor = jax.tree_util.tree_map(jnp.max, rel_errs)
     max_rel_err = jax.tree_util.tree_reduce(jnp.maximum, max_rel_err_per_tensor)
     print("Max grad relative error:", max_rel_err)
-    abs_errs = jax.tree_map(compute_abs_error, grad1, grad2)
-    max_abs_err_per_tensor = jax.tree_map(jnp.max, abs_errs)
+    abs_errs = jax.tree_util.tree_map(compute_abs_error, grad1, grad2)
+    max_abs_err_per_tensor = jax.tree_util.tree_map(jnp.max, abs_errs)
     max_abs_err = jax.tree_util.tree_reduce(jnp.maximum, max_abs_err_per_tensor)
     print("Max grad absolute error:", max_abs_err)
     concat_grads = jax.tree_util.tree_map(lambda x, y: jnp.concatenate([x, y]), grad1, grad2)
@@ -134,11 +135,11 @@ def compute_rel_error(
 
 
 def tree_max(tree):
-    return jax.tree_util.tree_reduce(jnp.maximum, jax.tree_map(jnp.max, tree))
+    return jax.tree_util.tree_reduce(jnp.maximum, jax.tree_util.tree_map(jnp.max, tree))
 
 
 def tree_min(tree):
-    return jax.tree_util.tree_reduce(jnp.minimum, jax.tree_map(jnp.min, tree))
+    return jax.tree_util.tree_reduce(jnp.minimum, jax.tree_util.tree_map(jnp.min, tree))
 
 
 
