@@ -20,7 +20,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         \frac{dy}{dt} = f(y, x; \theta)
     
     with given initial condition :math:`y(0) = y_0`,
-    where :math:`y` is the output signal, :math:`x` is the input signal, and :math:`params` is the parameters
+    where :math:`y` is the output signal, :math:`x` is the input signal, and :math:`\theta` is the parameters
     of the function.
     This function will return the output signal :math:`y` at the time points :math:`t`.
 
@@ -28,9 +28,9 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     ---------
     func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray]
         Function to evaluate the derivative of :math:`y` with respect to :math:`t`. The
-        arguments are: output signal :math:`y` ``(ny,)``, input signal :math:`x` ``(nx,)``, and parameters in a pytree.
-        The return value is the derivative of :math:`y` with respect to :math:`t`, i.e., :math:`\frac{dy}{dt}`
-        ``(ny,)``.
+        arguments are: output signal :math:`y` ``(ny,)``, input signal :math:`x` ``(nx,)``, and parameters
+        :math:`\theta` in a pytree. The return value is the derivative of :math:`y` with respect to :math:`t`,
+        i.e., :math:`\frac{dy}{dt}` ``(ny,)``.
     y0: jnp.ndarray
         Initial condition on :math:`y` ``(ny,)``.
     xinp: jnp.ndarray
@@ -93,7 +93,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray]
         Function to evaluate the next output signal :math:`y_{i+1}` from the current output signal :math:`y_i`.
         The arguments are: signal :math:`y` at the current time ``(ny,)``, input signal :math:`x` at the current time
-        ``(*nx,)`` in a pytree, and parameters in a pytree.
+        ``(*nx,)`` in a pytree, and parameters :math:`\theta` in a pytree.
         The return value is the next output signal :math:`y` at the next time ``(ny,)``.
     y0: jnp.ndarray
         Initial condition on :math:`y` ``(ny,)``.
