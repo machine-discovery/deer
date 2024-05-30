@@ -132,6 +132,8 @@ def test_solve_idae():
     # plt.savefig("test.png")
     # plt.close()
 
+    # solve_idae can satisfy the constraints very well
+    assert jnp.allclose(vrt[..., 0] ** 2 + vrt[..., 1] ** 2 - 1, 0, atol=1e-12)
     # check the outputs (relatively high rel error because of different ways to compute)
     assert jnp.all((vrt[:, 0] - vrt_np[:, 0]) / jnp.max(jnp.abs(vrt_np[:, 0])) < 1e-2)
     assert jnp.all((vrt[:, 1] - vrt_np[:, 1]) / jnp.max(jnp.abs(vrt_np[:, 1])) < 1e-2)
@@ -140,7 +142,6 @@ def test_solve_idae():
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
 def test_solve_idae_derivs():
-    pytest.xfail("The derivative of solve_idae is not fully developed yet.")
     dtype = jnp.float64
 
     gval = 10.0
@@ -156,13 +157,13 @@ def test_solve_idae_derivs():
     npts = 1000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
 
-    # excluding the initial condition here because the initial conditions are not freely changed
+    # excluding the initial condition here because the initial conditions cannot be freely changed
     def get_loss(tpts, params: Any) -> jnp.ndarray:
-        hseq = solve_idae(dae_pendulum, vr0, tpts[..., None] * 0, params, tpts)  # (nsteps, nh)
+        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts)  # (nsteps, nh)
         return hseq
 
     jax.test_util.check_grads(
-        get_loss, (tpts, params,), order=1, modes=['fwd'],
+        get_loss, (tpts, params,), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 

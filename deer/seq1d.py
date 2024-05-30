@@ -1,6 +1,7 @@
 from typing import Callable, Tuple, Optional, Any, List
 import jax
 import jax.numpy as jnp
+import numpy as np
 from deer.deer_iter import deer_iteration, deer_mode2_iteration
 # 1D sequence: RNN or ODE
 
@@ -190,34 +191,34 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     if yinit_guess is None:
         yinit_guess = jnp.zeros((tpts.shape[0], y0.shape[-1]), dtype=tpts.dtype) + y0
 
-    def func2(ydot: jnp.ndarray, yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
-        # yshifts: (ny,)
-        return func(ydot, yshifts[0], x, params)
+    def func2(yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
+        # yshifts: [2] + (ny,)
+        # x is dt
+        y, ym1 = yshifts
+        dt, xinp = x
+        return func((y - ym1) / dt, y, xinp, params)
 
-    def shifter_func(y: jnp.ndarray, shifter_params: Any) -> List[jnp.ndarray]:
+    def linfunc(y: jnp.ndarray, lin_params: Any) -> List[jnp.ndarray]:
         # y: (nsamples, ny)
-        # shifter_params: nothing
-        return [y]
+        # we're using backward euler's method, so we need to shift the values by one
+        ym1 = jnp.concatenate((y[:1], y[:-1]), axis=0)  # (nsamples, ny)
+        return [y, ym1]
 
-    def linfunc(y: jnp.ndarray, lin_params: Any) -> jnp.ndarray:
-        # y: (nsamples, ny)
-        tpts, _ = lin_params  # tpts: (nsamples,), y0: (ny,)
-        # backward euler
-        dydt1 = (y[1:] - y[:-1]) / (tpts[1:, None] - tpts[:-1, None])  # (nsamples - 1, ny)
-        dydt = jnp.concatenate((dydt1[:1], dydt1), axis=0)  # (nsamples, ny)
-        return dydt
 
-    inv_lin_params = (tpts, y0)
+    # dt[i] = t[i] - t[i - 1]
+    dt_partial = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
+    dt = jnp.concatenate((dt_partial[:1], dt_partial), axis=0)  # (nsamples,)
+
+    xinput = (dt, xinp)
+    inv_lin_params = (y0,)
     yt = deer_mode2_iteration(
-        lin=linfunc,
+        lin_func=linfunc,
         inv_lin=solve_idae_inv_lin,
         func=func2,
-        shifter_func=shifter_func,
-        p_num=1,
+        p_num=2,
         params=params,
-        xinput=xinp,
+        xinput=xinput,
         inv_lin_params=inv_lin_params,
-        shifter_func_params=None,
         yinit_guess=yinit_guess,
         max_iter=max_iter,
         memory_efficient=memory_efficient,
@@ -267,7 +268,7 @@ def solve_ivp_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
     htbar = jnp.einsum("...ij,...j->...i", htbar_helper, htmid_dt)
 
     # compute the recursive matrix multiplication
-    yt = matmul_recursive(gtbar, htbar, y0)  # (nt - 1, ny)
+    yt = matmul_recursive(gtbar, htbar, y0)  # (nt, ny)
     return yt
 
 
@@ -301,27 +302,24 @@ def seq1d_inv_lin(gmat: List[jnp.ndarray], rhs: jnp.ndarray,
     return yt
 
 
-def solve_idae_inv_lin(M: jnp.ndarray, gmat: List[jnp.ndarray], z: jnp.ndarray,
-                       inv_lin_params: Any) -> jnp.ndarray:
-    # solving the equation: M @ dydt + G @ y = z
+def solve_idae_inv_lin(
+        jacs: List[jnp.ndarray], z: jnp.ndarray,
+        inv_lin_params: Any) -> jnp.ndarray:
+    # solving the equation: M0_i @ y_i + M1_i @ y_{i-1} = z_i
     # M: (nsamples, ny, ny)
     # G: (nsamples, ny, ny)
     # rhs: (nsamples, ny)
-    # inv_lin_params: (tpts, y0) where tpts: (nsamples,), y0: (ny,)
-    G = gmat[0]
-    tpts, y0 = inv_lin_params  # tpts: (nsamples,), y0: (ny,)
-    dt = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
+    # inv_lin_params: (y0,) where tpts: (nsamples,), y0: (ny,)
+    M0, M1 = jacs
+    y0, = inv_lin_params  # tpts: (nsamples,), y0: (ny,)
 
-    # invert using backward Euler's expression
-    # using the mid-point value to make it more accurate
-    Gavg_dt = (G[1:] + G[:-1]) / 2 * dt[:, None, None]  # (nsamples - 1, ny, ny)
-    Mavg = (M[1:] + M[:-1]) / 2  # (nsamples - 1, ny, ny)
-    zavg_dt = (z[1:] + z[:-1]) / 2 * dt[:, None]  # (nsamples - 1, ny)
-    MGdt_inv = jnp.linalg.inv(Mavg + Gavg_dt)
-    M2 = jnp.einsum("...ij, ...jk -> ...ik", MGdt_inv, Mavg)  # (nsamples, ny, ny)
-    z2 = jnp.einsum("...ij, ...j -> ...i", MGdt_inv, zavg_dt)  # (nsamples - 1, ny)
-    y = matmul_recursive(M2, z2, y0)  # (nsamples - 1, ny)
+    # using index [1:] because we don't need to compute y_0 again (it's already available from y0)
+    M0inv = jnp.linalg.inv(M0[1:])
+    M0invM1 = -jnp.einsum("...ij,...jk->...ik", M0inv, M1[1:])
+    M0invz = jnp.einsum("...ij,...j->...i", M0inv, z[1:])
+    y = matmul_recursive(M0invM1, M0invz, y0)  # (nsamples, ny)
     return y
+
 
 def binary_operator(element_i: Tuple[jnp.ndarray, jnp.ndarray],
                     element_j: Tuple[jnp.ndarray, jnp.ndarray]) -> Tuple[jnp.ndarray, jnp.ndarray]:
