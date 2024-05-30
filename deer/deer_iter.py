@@ -341,6 +341,7 @@ def deer_mode2_iteration_helper(
             # jax.debug.print("gteival: {gteival}", gteival=jnp.max(jnp.abs(jnp.real(jnp.linalg.eigvals(gts[0])))))
 
         err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
+        # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=err)
         return err, yt_next, (jacLy, gts), iiter + 1
 
     def cond_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) -> bool:
