@@ -2,7 +2,8 @@
     "deer": {
       "desc": "",
       "api": {
-        "solve_ivp": "Solve initial value problem (IVP)",
+        "solve_ivp": "Solving initial value problem (IVP)",
+        "solve_idae": "Solving implicit differential algebraic equation",
         "seq1d": "Evaluating discrete sequential model"
       }
     }
