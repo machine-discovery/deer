@@ -7,7 +7,8 @@ import jax.test_util
 import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
-from deer.seq1d import solve_ivp, seq1d, solve_idae, matmul_recursive
+from deer.maths import matmul_recursive
+from deer import solve_ivp, solve_idae, seq1d
 
 
 jax.config.update('jax_platform_name', 'cpu')

@@ -4,7 +4,7 @@ import functools
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from deer.seq1d import seq1d
+from deer.fseq1d import seq1d
 
 
 jax.config.update("jax_enable_x64", True)
