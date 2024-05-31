@@ -29,7 +29,8 @@ The demo script has various options which can be seen by `python deer/demo.py --
 On the `deer/` directory:
 
 * [`deer_iter.py`](deer/deer_iter.py): the implementation of the DEER iterations, including forward evaluation and backward gradients.
-* [`seq1d.py`](deer/seq1d.py): materialization of DEER for discrete 1D sequences and NeuralODE.
+* [`fseq1d.py`](deer/fseq1d.py): materialization of DEER for discrete 1D sequences (e.g., RNN).
+* [`fsolve_ivp.py`](deer/fsolve_ivp.py): materialization of DEER for solving initial value problems (i.e., ODE).
 * [`demo.py`](deer/demo.py): a demo script to run the discrete 1D sequence experiment using untrained GRU from Equinox.
 
 A typical output for the demo script using a V100 GPU is as follows (your output may vary):
