@@ -168,8 +168,12 @@ def test_solve_idae_derivs():
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-@pytest.mark.parametrize("jit, difficult, memeff", itertools.product([True, False], [True, False], [True, False]))
-def test_rnn(jit: bool, difficult: bool, memeff: bool):
+@pytest.mark.parametrize(
+        "jit, difficult, method",
+        itertools.product([True, False], [True, False],
+                          [seq1d.SeqDEER(memory_efficient=True), seq1d.SeqDEER(memory_efficient=False),
+                           seq1d.Sequential()]))
+def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
     def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -209,10 +213,7 @@ def test_rnn(jit: bool, difficult: bool, memeff: bool):
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    if memeff:
-        func0 = functools.partial(seq1d, memory_efficient=memeff)
-    else:
-        func0 = seq1d
+    func0 = functools.partial(seq1d, method=method)
     if jit:
         func = jax.jit(func0, static_argnums=(0,))
     else:
@@ -261,7 +262,8 @@ def test_rnn_derivs(memory_efficient: bool):
     params = (Wh, Wx)
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
-        hseq = seq1d(rnn_func, h0, xinp, params, memory_efficient=memory_efficient)  # (nsteps, nh)
+        # (nsteps, nh)
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.SeqDEER(memory_efficient=memory_efficient))
         return hseq
 
     jax.test_util.check_grads(
