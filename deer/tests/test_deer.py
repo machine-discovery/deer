@@ -34,7 +34,10 @@ def test_matmul_recursive():
     result2 = matmul_recursive(mats, vecs, y0)
     assert jnp.allclose(result, result2)
 
-def test_solve_ivp():
+@pytest.mark.parametrize("method", [
+    solve_ivp.DEER()
+])
+def test_solve_ivp(method):
     ny = 4
     dtype = jnp.float64
     key = jax.random.PRNGKey(0)
@@ -66,7 +69,7 @@ def test_solve_ivp():
 
     params = (A0, A1)
     params_np = (A0_np, A1_np)
-    yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
+    yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
     yt_np = solve_ivp_scipy(func_np, (tpts_np[0], tpts_np[-1]), y0_np, t_eval=tpts_np, args=params_np, rtol=1e-10, atol=1e-10).y.T
 
     # import matplotlib.pyplot as plt
@@ -80,7 +83,7 @@ def test_solve_ivp():
 
     # check the gradients
     def get_loss(y0, params):
-        yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
+        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
         return jnp.sum(yt ** 2, axis=0)  # only sum over time
     jax.test_util.check_grads(
         get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
