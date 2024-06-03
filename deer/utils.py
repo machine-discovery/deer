@@ -15,11 +15,11 @@ def get_method_meta(func: Callable):
     additional_docstr_format = """
     Methods
     -------
-    method="{name}()"
+    method={funcname}.{name}()
 
         .. code-block:: python
 
-            {name}{signature}
+            {funcname}.{name}{signature}
     """
     class DefMethodMeta(ABCMeta):
         """
@@ -41,7 +41,7 @@ def get_method_meta(func: Callable):
                     (nm, param) for nm, param in signature.parameters.items() if nm != 'self'
                 )
                 signature = signature.replace(parameters=new_params.values())
-                func.__doc__ += additional_docstr_format.format(name=name, signature=signature)
+                func.__doc__ += additional_docstr_format.format(name=name, signature=signature, funcname=func.__name__)
                 func.__doc__ += indent(dedent(cls.__doc__), " " * 8)
             else:
                 # cls is the base method class
