@@ -38,7 +38,7 @@ def get_method_meta(func: Callable):
                 # get the signature of the cls
                 signature = inspect.signature(cls.__init__)
                 new_params = OrderedDict(
-                    (name, param) for name, param in signature.parameters.items() if name != 'self'
+                    (nm, param) for nm, param in signature.parameters.items() if nm != 'self'
                 )
                 signature = signature.replace(parameters=new_params.values())
                 func.__doc__ += additional_docstr_format.format(name=name, signature=signature)
@@ -53,6 +53,6 @@ def check_method(method, func_obj: Callable):
     # check if the passed ``method`` for a function ``func_obj`` is a valid method
     # func_obj must be the ones passed in get_method_meta above
     if not isinstance(method, func_obj.base_method):
-        msg = f"`method` must be an instance of {func_obj.base_method.__name__}, got {type(method)}. "
+        msg = f"`method` must be an instance of `{func_obj.__name__}.*` method, got {type(method)}. "
         msg += f"Available methods are: {func_obj.methods}"
-        raise ValueError()
+        raise ValueError(msg)
