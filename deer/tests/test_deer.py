@@ -87,7 +87,9 @@ def test_solve_ivp():
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-def test_solve_idae():
+@pytest.mark.parametrize("method", [
+    solve_idae.DEER(memory_efficient=True), solve_idae.DEER(memory_efficient=False)])
+def test_solve_idae(method):
     dtype = jnp.float64
 
     gval = 10.0
@@ -102,7 +104,7 @@ def test_solve_idae():
     params = g
     npts = 10000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
-    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts)  # (ntpts, ny)
+    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
 
     # evaluate with numpy, but recast the problem into ODE because numpy does not have DAE solver
     def func_np(t: np.ndarray, vr: np.ndarray) -> np.ndarray:
@@ -142,7 +144,9 @@ def test_solve_idae():
     assert jnp.all((vrt[:, 3] - vrt_np[:, 3]) / jnp.max(jnp.abs(vrt_np[:, 3])) < 2e-2)
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
-def test_solve_idae_derivs():
+@pytest.mark.parametrize("method", [
+    solve_idae.DEER(memory_efficient=True), solve_idae.DEER(memory_efficient=False)])
+def test_solve_idae_derivs(method):
     dtype = jnp.float64
 
     gval = 10.0
@@ -160,7 +164,8 @@ def test_solve_idae_derivs():
 
     # excluding the initial condition here because the initial conditions cannot be freely changed
     def get_loss(tpts, params: Any) -> jnp.ndarray:
-        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts)  # (nsteps, nh)
+        # (nsteps, nh)
+        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method)
         return hseq
 
     jax.test_util.check_grads(
