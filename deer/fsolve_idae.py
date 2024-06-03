@@ -1,6 +1,8 @@
 from abc import abstractmethod
 from typing import Any, Callable, List, Optional
+import jax
 import jax.numpy as jnp
+import optimistix as optx
 from deer.deer_iter import deer_mode2_iteration
 from deer.maths import matmul_recursive
 from deer.utils import get_method_meta, check_method
@@ -43,16 +45,11 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
         The parameters of the function ``func``.
     tpts: jnp.ndarray
         The time points to evaluate the solution ``(nsamples,)``.
-    yinit_guess: jnp.ndarray or None
-        The initial guess of the output signal ``(nsamples, ny)``.
-        If None, it will be initialized as 0s.
-    max_iter: int
-        The maximum number of iterations to perform.
-    memory_efficient: bool
-        If True, then use the memory efficient algorithm for the DEER iteration.
+    method: Optional[SolveIDAEMethod]
+        The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
     """
     if method is None:
-        method = DEER()
+        method = BwdEulerDEER()
     check_method(method, solve_idae)
     return method.compute(func, y0, xinp, params, tpts)
 
@@ -62,7 +59,44 @@ class SolveIDAEMethod(metaclass=get_method_meta(solve_idae)):
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
         pass
 
-class DEER(SolveIDAEMethod):
+class BwdEuler(SolveIDAEMethod):
+    """
+    Solve the implicit DAE method using backward Euler's method.
+
+    Arguments
+    ---------
+    solver: Optional[optx.AbstractRootFinder]
+        The root finder solver. If None, then use the Newton's method.
+    """
+    def __init__(self, solver: Optional[optx.AbstractRootFinder] = None):
+        if solver is None:
+            solver = optx.Newton(rtol=1e-6, atol=1e-6)
+        self.solver = solver
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+        # y0: (ny,) the initial states (it's not checked for correctness)
+        # xinp: pytree, each has `(nsamples, *nx)`
+        # tpts: (nsamples,) the time points
+        # returns: (nsamples, ny), including the initial states
+        def fn(yi, args):
+            yim1, xi, dti, params = args
+            return func((yi - yim1) / dti, yi, xi, params)
+
+        def scan_fn(carry, x):
+            yprev = carry
+            xi, dti = x
+            sol = optx.root_find(fn, self.solver, yprev, (yprev, xi, dti, params))
+            yi = sol.value
+            return yi, yi
+
+        dti = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
+        xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
+        _, y = jax.lax.scan(scan_fn, y0, (xi, dti))  # (nsamples - 1, ny)
+        y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
+        return y
+
+class BwdEulerDEER(SolveIDAEMethod):
     """
     Solve the implicit DAE method using DEER method for backward Euler's method.
 
@@ -82,7 +116,7 @@ class DEER(SolveIDAEMethod):
         self.max_iter = max_iter
         self.memory_efficient = memory_efficient
 
-    def compute(self, func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`

@@ -88,7 +88,10 @@ def test_solve_ivp():
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.DEER(memory_efficient=True), solve_idae.DEER(memory_efficient=False)])
+    solve_idae.BwdEulerDEER(memory_efficient=True),
+    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEuler(),
+    ])
 def test_solve_idae(method):
     dtype = jnp.float64
 
@@ -145,7 +148,10 @@ def test_solve_idae(method):
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.DEER(memory_efficient=True), solve_idae.DEER(memory_efficient=False)])
+    solve_idae.BwdEulerDEER(memory_efficient=True),
+    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEuler(),
+    ])
 def test_solve_idae_derivs(method):
     dtype = jnp.float64
 
