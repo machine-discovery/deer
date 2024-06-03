@@ -36,7 +36,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     params: Any
         The parameters of the function ``func``.
     method: Optional[Seq1DMethod]
-        The method to solve the 1D sequence. If None, then use the ``SeqDEER()`` method.
+        The method to solve the 1D sequence. If None, then use the ``DEER()`` method.
 
     Returns
     -------
@@ -45,7 +45,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
         excluding the initial states.
     """
     if method is None:
-        method = SeqDEER()
+        method = DEER()
     check_method(method, seq1d)
     return method.compute(func, y0, xinp, params)
 
@@ -72,7 +72,7 @@ class Sequential(Seq1DMethod):
         _, y = jax.lax.scan(scan_fn, y0, xinp)
         return y
 
-class SeqDEER(Seq1DMethod):
+class DEER(Seq1DMethod):
     """
     Compute the 1D sequential method using DEER method.
 

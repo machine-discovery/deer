@@ -171,7 +171,7 @@ def test_solve_idae_derivs():
 @pytest.mark.parametrize(
         "jit, difficult, method",
         itertools.product([True, False], [True, False],
-                          [seq1d.SeqDEER(memory_efficient=True), seq1d.SeqDEER(memory_efficient=False),
+                          [seq1d.DEER(memory_efficient=True), seq1d.DEER(memory_efficient=False),
                            seq1d.Sequential()]))
 def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
@@ -263,7 +263,7 @@ def test_rnn_derivs(memory_efficient: bool):
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.SeqDEER(memory_efficient=memory_efficient))
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER(memory_efficient=memory_efficient))
         return hseq
 
     jax.test_util.check_grads(
