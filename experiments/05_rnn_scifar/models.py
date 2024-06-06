@@ -5,7 +5,7 @@ import functools
 import jax
 import jax.numpy as jnp
 import equinox as eqx
-from deer.seq1d import seq1d
+from deer.fseq1d import seq1d
 
 
 def eval_rnn_seq(carry: jnp.ndarray, inputs: jnp.ndarray, rnn_params, rnn_static) \

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 from jax._src import prng
 
-from deer.seq1d import seq1d
+from deer.fseq1d import seq1d
 
 
 def vmap_to_shape(func: Callable, shape: Sequence[int]) -> Callable:

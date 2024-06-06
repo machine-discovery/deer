@@ -13,7 +13,7 @@ from flax import linen as nn
 import optax
 import numpy as np
 import scipy.integrate
-from deer.seq1d import solve_ivp
+from deer.fseq1d import solve_ivp
 from PIL import Image
 
 # enable float 64

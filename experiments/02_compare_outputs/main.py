@@ -6,14 +6,14 @@ import jax.numpy as jnp
 import numpy as np
 import equinox as eqx
 import matplotlib.pyplot as plt
-from deer.seq1d import seq1d
+from deer.fseq1d import seq1d
 
 
 def compare_outputs(
         nh: int = 32,
         nsequence: int = 10000,
         seed: int = 0,
-        batch_size: int = 2,  # changing batch_size to 1 makes the outputs not identical
+        batch_size: int = 1,
         dtype: Any = jnp.float32):
 
     key = jax.random.PRNGKey(seed)
