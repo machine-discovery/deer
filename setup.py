@@ -29,6 +29,7 @@ setup(
         "scipy>=1.10.1",
         "equinox>=0.10.6",
         "matplotlib>=3.6.2",
+        "optimistix>=0.0.7",
     ],
     extras_require={
         "replication": [
