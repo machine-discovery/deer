@@ -7,7 +7,8 @@ import jax.test_util
 import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
-from deer.seq1d import solve_ivp, seq1d, solve_idae, matmul_recursive
+from deer.maths import matmul_recursive
+from deer import solve_ivp, solve_idae, seq1d
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -33,7 +34,10 @@ def test_matmul_recursive():
     result2 = matmul_recursive(mats, vecs, y0)
     assert jnp.allclose(result, result2)
 
-def test_solve_ivp():
+@pytest.mark.parametrize("method", [
+    solve_ivp.DEER()
+])
+def test_solve_ivp(method):
     ny = 4
     dtype = jnp.float64
     key = jax.random.PRNGKey(0)
@@ -65,7 +69,7 @@ def test_solve_ivp():
 
     params = (A0, A1)
     params_np = (A0_np, A1_np)
-    yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
+    yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
     yt_np = solve_ivp_scipy(func_np, (tpts_np[0], tpts_np[-1]), y0_np, t_eval=tpts_np, args=params_np, rtol=1e-10, atol=1e-10).y.T
 
     # import matplotlib.pyplot as plt
@@ -79,14 +83,19 @@ def test_solve_ivp():
 
     # check the gradients
     def get_loss(y0, params):
-        yt = solve_ivp(func, y0, tpts[..., None], params, tpts)  # (ntpts, ny)
+        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
         return jnp.sum(yt ** 2, axis=0)  # only sum over time
     jax.test_util.check_grads(
         get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-def test_solve_idae():
+@pytest.mark.parametrize("method", [
+    solve_idae.BwdEulerDEER(memory_efficient=True),
+    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEuler(),
+    ])
+def test_solve_idae(method):
     dtype = jnp.float64
 
     gval = 10.0
@@ -101,7 +110,7 @@ def test_solve_idae():
     params = g
     npts = 10000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
-    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts)  # (ntpts, ny)
+    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
 
     # evaluate with numpy, but recast the problem into ODE because numpy does not have DAE solver
     def func_np(t: np.ndarray, vr: np.ndarray) -> np.ndarray:
@@ -141,7 +150,12 @@ def test_solve_idae():
     assert jnp.all((vrt[:, 3] - vrt_np[:, 3]) / jnp.max(jnp.abs(vrt_np[:, 3])) < 2e-2)
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
-def test_solve_idae_derivs():
+@pytest.mark.parametrize("method", [
+    solve_idae.BwdEulerDEER(memory_efficient=True),
+    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEuler(),
+    ])
+def test_solve_idae_derivs(method):
     dtype = jnp.float64
 
     gval = 10.0
@@ -159,7 +173,8 @@ def test_solve_idae_derivs():
 
     # excluding the initial condition here because the initial conditions cannot be freely changed
     def get_loss(tpts, params: Any) -> jnp.ndarray:
-        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts)  # (nsteps, nh)
+        # (nsteps, nh)
+        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method)
         return hseq
 
     jax.test_util.check_grads(
@@ -167,8 +182,12 @@ def test_solve_idae_derivs():
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
-@pytest.mark.parametrize("jit, difficult, memeff", itertools.product([True, False], [True, False], [True, False]))
-def test_rnn(jit: bool, difficult: bool, memeff: bool):
+@pytest.mark.parametrize(
+        "jit, difficult, method",
+        itertools.product([True, False], [True, False],
+                          [seq1d.DEER(memory_efficient=True), seq1d.DEER(memory_efficient=False),
+                           seq1d.Sequential()]))
+def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
     def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -208,10 +227,7 @@ def test_rnn(jit: bool, difficult: bool, memeff: bool):
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    if memeff:
-        func0 = functools.partial(seq1d, memory_efficient=memeff)
-    else:
-        func0 = seq1d
+    func0 = functools.partial(seq1d, method=method)
     if jit:
         func = jax.jit(func0, static_argnums=(0,))
     else:
@@ -260,7 +276,8 @@ def test_rnn_derivs(memory_efficient: bool):
     params = (Wh, Wx)
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
-        hseq = seq1d(rnn_func, h0, xinp, params, memory_efficient=memory_efficient)  # (nsteps, nh)
+        # (nsteps, nh)
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER(memory_efficient=memory_efficient))
         return hseq
 
     jax.test_util.check_grads(

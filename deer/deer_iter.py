@@ -302,7 +302,7 @@ def deer_mode2_iteration_helper(
 
     dtype = yinit_guess.dtype
     # set the tolerance to be 1e-4 if dtype is float32, else 1e-7 for float64
-    tol = 1e-7 if dtype == jnp.float64 else 1e-4
+    tol = 1e-6 if dtype == jnp.float64 else 1e-4
 
     # def iter_func(err, yt, gt_, iiter):
     def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \

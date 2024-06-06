@@ -1,0 +1,287 @@
+nh: 1 nsequence: 1000 seed: 0
+Sequential GRU time: 3.510e-02 s
+DEER GRU time: 8.100e-04 s
+Speedup of DEER GRU over Sequential GRU: 43.33673784750327
+Max relative error: 0.00031737634
+Max absolute error: 3.5762787e-07
+Max and min of x1: 0.9338559 -0.97995174
+Max grad relative error: 7.863715e-07
+Max grad absolute error: 3.3527613e-08
+Max and min of grad1 and grad2: 0.07868802 -0.11600306
+--------
+nh: 1 nsequence: 1000 seed: 1
+Sequential GRU time: 3.488e-02 s
+DEER GRU time: 8.508e-04 s
+Speedup of DEER GRU over Sequential GRU: 40.99736576616971
+Max relative error: 0.0006878869
+Max absolute error: 5.9604645e-08
+Max and min of x1: 0.2508294 -0.11316568
+Max grad relative error: 1.2302996e-05
+Max grad absolute error: 3.874302e-07
+Max and min of grad1 and grad2: 0.18347922 -0.0038147944
+--------
+nh: 1 nsequence: 1000 seed: 2
+Sequential GRU time: 3.495e-02 s
+DEER GRU time: 8.416e-04 s
+Speedup of DEER GRU over Sequential GRU: 41.523662478575574
+Max relative error: 0.00093625445
+Max absolute error: 5.066395e-07
+Max and min of x1: 0.99575806 -0.51138496
+Max grad relative error: 6.524614e-07
+Max grad absolute error: 8.940697e-08
+Max and min of grad1 and grad2: 0.26054728 -0.069790214
+--------
+nh: 1 nsequence: 1000 seed: 3
+Sequential GRU time: 3.579e-02 s
+DEER GRU time: 8.651e-04 s
+Speedup of DEER GRU over Sequential GRU: 41.371112427829296
+Max relative error: 0.0003162472
+Max absolute error: 3.2782555e-07
+Max and min of x1: 0.48634532 -0.9317793
+Max grad relative error: 1.2934877e-06
+Max grad absolute error: 4.7683716e-07
+Max and min of grad1 and grad2: 0.24115852 -0.9743668
+--------
+nh: 1 nsequence: 1000 seed: 4
+Sequential GRU time: 3.499e-02 s
+DEER GRU time: 8.227e-04 s
+Speedup of DEER GRU over Sequential GRU: 42.52352318993871
+Max relative error: 0.0030534351
+Max absolute error: 5.364418e-07
+Max and min of x1: 0.65308696 -0.9993456
+Max grad relative error: 9.4786174e-07
+Max grad absolute error: 4.4703484e-07
+Max and min of grad1 and grad2: 0.1841784 -0.4716245
+--------
+nh: 1 nsequence: 3000 seed: 0
+Sequential GRU time: 1.051e-01 s
+DEER GRU time: 1.118e-03 s
+Speedup of DEER GRU over Sequential GRU: 93.96071679849904
+Max relative error: 0.0026985072
+Max absolute error: 3.5762787e-07
+Max and min of x1: 0.9605064 -0.9911816
+Max grad relative error: 1.064662e-06
+Max grad absolute error: 1.2665987e-07
+Max and min of grad1 and grad2: 0.08023214 -0.11896721
+--------
+nh: 1 nsequence: 3000 seed: 1
+Sequential GRU time: 1.042e-01 s
+DEER GRU time: 9.902e-04 s
+Speedup of DEER GRU over Sequential GRU: 105.24821226494595
+Max relative error: 0.0005305844
+Max absolute error: 5.9604645e-08
+Max and min of x1: 0.25478056 -0.12295435
+Max grad relative error: 1.509323e-06
+Max grad absolute error: 1.1920929e-07
+Max and min of grad1 and grad2: 0.110378675 -0.0025926302
+--------
+nh: 1 nsequence: 3000 seed: 2
+Sequential GRU time: 1.043e-01 s
+DEER GRU time: 9.181e-04 s
+Speedup of DEER GRU over Sequential GRU: 113.6416922038124
+Max relative error: 0.004484305
+Max absolute error: 4.172325e-07
+Max and min of x1: 0.99964815 -0.5408587
+Max grad relative error: 1.4131382e-06
+Max grad absolute error: 5.9604645e-08
+Max and min of grad1 and grad2: 0.2679276 -0.07293662
+--------
+nh: 1 nsequence: 3000 seed: 3
+Sequential GRU time: 1.043e-01 s
+DEER GRU time: 1.002e-03 s
+Speedup of DEER GRU over Sequential GRU: 104.0482053844415
+Max relative error: 0.0089552235
+Max absolute error: 3.874302e-07
+Max and min of x1: 0.51477295 -0.95475096
+Max grad relative error: 1.0068379e-06
+Max grad absolute error: 5.9604645e-07
+Max and min of grad1 and grad2: 0.2314854 -0.94262874
+--------
+nh: 1 nsequence: 3000 seed: 4
+Sequential GRU time: 1.045e-01 s
+DEER GRU time: 9.579e-04 s
+Speedup of DEER GRU over Sequential GRU: 109.08665405580308
+Max relative error: 0.0013800717
+Max absolute error: 6.854534e-07
+Max and min of x1: 0.72037923 -0.9994123
+Max grad relative error: 1.255825e-06
+Max grad absolute error: 5.9604645e-07
+Max and min of grad1 and grad2: 0.18751112 -0.49851742
+--------
+nh: 1 nsequence: 10000 seed: 0
+Sequential GRU time: 3.491e-01 s
+DEER GRU time: 1.092e-03 s
+Speedup of DEER GRU over Sequential GRU: 319.5323207193052
+Max relative error: 0.0039658328
+Max absolute error: 3.874302e-07
+Max and min of x1: 0.9537785 -0.996577
+Max grad relative error: 3.2299927e-06
+Max grad absolute error: 1.1175871e-07
+Max and min of grad1 and grad2: 0.08097519 -0.118764736
+--------
+nh: 1 nsequence: 10000 seed: 1
+Sequential GRU time: 3.491e-01 s
+DEER GRU time: 1.149e-03 s
+Speedup of DEER GRU over Sequential GRU: 303.7878011329446
+Max relative error: 0.018258426
+Max absolute error: 5.9604645e-08
+Max and min of x1: 0.30356026 -0.13707152
+Max grad relative error: 2.4947615e-06
+Max grad absolute error: 3.2782555e-07
+Max and min of grad1 and grad2: 0.14175063 -0.0032001275
+--------
+nh: 1 nsequence: 10000 seed: 2
+Sequential GRU time: 3.492e-01 s
+DEER GRU time: 1.132e-03 s
+Speedup of DEER GRU over Sequential GRU: 308.54263745523485
+Max relative error: 0.007936508
+Max absolute error: 4.7683716e-07
+Max and min of x1: 0.99932814 -0.5473157
+Max grad relative error: 2.555952e-06
+Max grad absolute error: 6.556511e-07
+Max and min of grad1 and grad2: 0.26163325 -0.07319054
+--------
+nh: 1 nsequence: 10000 seed: 3
+Sequential GRU time: 3.492e-01 s
+DEER GRU time: 1.330e-03 s
+Speedup of DEER GRU over Sequential GRU: 262.5205297775866
+Max relative error: 0.0051993066
+Max absolute error: 4.4703484e-07
+Max and min of x1: 0.573008 -0.9588571
+Max grad relative error: 3.1221934e-06
+Max grad absolute error: 2.9802322e-06
+Max and min of grad1 and grad2: 0.2363506 -0.95453167
+--------
+nh: 1 nsequence: 10000 seed: 4
+Sequential GRU time: 3.490e-01 s
+DEER GRU time: 1.158e-03 s
+Speedup of DEER GRU over Sequential GRU: 301.3092505481158
+Max relative error: 0.0030439547
+Max absolute error: 5.364418e-07
+Max and min of x1: 0.74393547 -0.9998281
+Max grad relative error: 2.3391588e-06
+Max grad absolute error: 5.364418e-07
+Max and min of grad1 and grad2: 0.1880379 -0.50192523
+--------
+nh: 1 nsequence: 30000 seed: 0
+Sequential GRU time: 1.055e+00 s
+DEER GRU time: 1.873e-03 s
+Speedup of DEER GRU over Sequential GRU: 563.4858441326986
+Max relative error: 0.01754386
+Max absolute error: 3.874302e-07
+Max and min of x1: 0.9680073 -0.99513334
+Max grad relative error: 4.9372657e-06
+Max grad absolute error: 1.2665987e-07
+Max and min of grad1 and grad2: 0.08072656 -0.11935598
+--------
+nh: 1 nsequence: 30000 seed: 1
+Sequential GRU time: 1.058e+00 s
+DEER GRU time: 1.537e-03 s
+Speedup of DEER GRU over Sequential GRU: 688.1324177187704
+Max relative error: 0.050847456
+Max absolute error: 5.9604645e-08
+Max and min of x1: 0.28059494 -0.13492629
+Max grad relative error: 5.6910426e-06
+Max grad absolute error: 5.811453e-07
+Max and min of grad1 and grad2: 0.15095495 -0.003455099
+--------
+nh: 1 nsequence: 30000 seed: 2
+Sequential GRU time: 1.058e+00 s
+DEER GRU time: 1.609e-03 s
+Speedup of DEER GRU over Sequential GRU: 657.4623158768264
+Max relative error: 0.0055710305
+Max absolute error: 6.556511e-07
+Max and min of x1: 0.99941367 -0.5886612
+Max grad relative error: 7.364396e-06
+Max grad absolute error: 3.2782555e-07
+Max and min of grad1 and grad2: 0.26334724 -0.072113104
+--------
+nh: 1 nsequence: 30000 seed: 3
+Sequential GRU time: 1.058e+00 s
+DEER GRU time: 1.543e-03 s
+Speedup of DEER GRU over Sequential GRU: 685.4933411612026
+Max relative error: 0.036036037
+Max absolute error: 5.662441e-07
+Max and min of x1: 0.5530798 -0.9605713
+Max grad relative error: 3.3715921e-06
+Max grad absolute error: 2.7418137e-06
+Max and min of grad1 and grad2: 0.23974624 -0.9595465
+--------
+nh: 1 nsequence: 30000 seed: 4
+Sequential GRU time: 1.058e+00 s
+DEER GRU time: 1.638e-03 s
+Speedup of DEER GRU over Sequential GRU: 645.736404657933
+Max relative error: 0.12820514
+Max absolute error: 5.364418e-07
+Max and min of x1: 0.80722547 -0.99964136
+Max grad relative error: 4.264187e-06
+Max grad absolute error: 7.301569e-07
+Max and min of grad1 and grad2: 0.1884312 -0.49395943
+--------
+nh: 1 nsequence: 100000 seed: 0
+Sequential GRU time: 3.459e+00 s
+DEER GRU time: 4.169e-03 s
+Speedup of DEER GRU over Sequential GRU: 829.6263570368634
+Max relative error: 0.071428575
+Max absolute error: 4.172325e-07
+Max and min of x1: 0.9648856 -0.9974083
+Max grad relative error: 8.326845e-06
+Max grad absolute error: 4.3213367e-07
+Max and min of grad1 and grad2: 0.08037415 -0.11763793
+--------
+nh: 1 nsequence: 100000 seed: 1
+Sequential GRU time: 3.461e+00 s
+DEER GRU time: 3.133e-03 s
+Speedup of DEER GRU over Sequential GRU: 1104.4984704593187
+Max relative error: 0.11111111
+Max absolute error: 8.940697e-08
+Max and min of x1: 0.31846333 -0.14914149
+Max grad relative error: 1.1360001e-05
+Max grad absolute error: 1.0877848e-06
+Max and min of grad1 and grad2: 0.14989242 -0.0034637654
+--------
+nh: 1 nsequence: 100000 seed: 2
+Sequential GRU time: 3.464e+00 s
+DEER GRU time: 3.689e-03 s
+Speedup of DEER GRU over Sequential GRU: 939.0687876515759
+Max relative error: 0.11504425
+Max absolute error: 6.556511e-07
+Max and min of x1: 0.9997568 -0.5774032
+Max grad relative error: 1.3102872e-05
+Max grad absolute error: 2.1010637e-06
+Max and min of grad1 and grad2: 0.26463863 -0.07303779
+--------
+nh: 1 nsequence: 100000 seed: 3
+Sequential GRU time: 3.464e+00 s
+DEER GRU time: 3.587e-03 s
+Speedup of DEER GRU over Sequential GRU: 965.6248728906494
+Max relative error: 0.05660377
+Max absolute error: 5.364418e-07
+Max and min of x1: 0.6483226 -0.96904117
+Max grad relative error: 6.712805e-06
+Max grad absolute error: 9.685755e-07
+Max and min of grad1 and grad2: 0.23754139 -0.9515108
+--------
+nh: 1 nsequence: 100000 seed: 4
+Sequential GRU time: 3.464e+00 s
+DEER GRU time: 3.594e-03 s
+Speedup of DEER GRU over Sequential GRU: 963.9400861125301
+Max relative error: 0.017267149
+Max absolute error: 8.34465e-07
+Max and min of x1: 0.83071613 -0.99980396
+Max grad relative error: 9.14747e-06
+Max grad absolute error: 1.1324883e-06
+Max and min of grad1 and grad2: 0.18885562 -0.49466208
+--------
+nh: 1 nsequence: 300000 seed: 0
+Sequential GRU time: 1.052e+01 s
+DEER GRU time: 1.006e-02 s
+Speedup of DEER GRU over Sequential GRU: 1045.4004272203074
+Max relative error: 0.8333334
+Max absolute error: 4.4703484e-07
+Max and min of x1: 0.96865 -0.99828553
+Max grad relative error: 1.5317388e-05
+Max grad absolute error: 1.4528632e-06
+Max and min of grad1 and grad2: 0.08056453 -0.11739853
+--------
+nh: 1 nsequence: 300000 seed: 1

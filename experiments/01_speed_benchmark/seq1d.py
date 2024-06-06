@@ -8,7 +8,7 @@ from tqdm import tqdm
 import jax
 import jax.numpy as jnp
 import flax.linen
-from deer.seq1d import seq1d
+from deer.fseq1d import seq1d
 
 
 # jax.config.update('jax_platform_name', 'cpu')
