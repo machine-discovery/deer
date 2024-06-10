@@ -171,14 +171,13 @@ def test_solve_idae_derivs(method):
     npts = 1000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
 
-    # excluding the initial condition here because the initial conditions cannot be freely changed
-    def get_loss(tpts, params: Any) -> jnp.ndarray:
+    def get_loss(vr0, tpts, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
         hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method)
         return hseq
 
     jax.test_util.check_grads(
-        get_loss, (tpts, params,), order=1, modes=['rev', 'fwd'],
+        get_loss, (vr0, tpts, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
