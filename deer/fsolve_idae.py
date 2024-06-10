@@ -47,6 +47,21 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
         The time points to evaluate the solution ``(nsamples,)``.
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> def idae_func(dy, y, x, params):
+    ...     return dy + y - x - params
+    >>> y0 = jnp.array([1.0])
+    >>> xinp = jnp.array([[0.0], [1.0], [2.0], [3.0]])
+    >>> params = jnp.array([0.5])
+    >>> tpts = jnp.array([0.0, 1.0, 2.0, 3.0])
+    >>> solve_idae(idae_func, y0, xinp, params, tpts)
+    Array([[1.    ],
+           [1.25  ],
+           [1.875 ],
+           [2.6875]], dtype=float64)
     """
     if method is None:
         method = BwdEulerDEER()

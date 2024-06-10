@@ -68,6 +68,44 @@ def deer_iteration(
     -------
     y: jnp.ndarray
         The output signal as the solution of the non-linear differential equations (nsamples, ny).
+    
+    Example
+    ---
+    >>> import jax
+    >>> import jax.numpy as jnp
+
+    >>> def lin_func(yt, inv_lin_params):
+    ...     return [yt]
+
+    >>> def inv_lin(jacLs, rhs, inv_lin_params):
+    ...     return jnp.linalg.solve(jacLs[0], rhs[..., None])[..., 0]
+
+    >>> def func(Lys, xinput, params):
+    ...     return Lys[0] + xinput - params
+
+    >>> yinit_guess = jnp.array([[1.0], [2.0]], dtype=jnp.float32)
+    >>> params = jnp.array(0.5, dtype=jnp.float32)
+    >>> xinput = jnp.array([[0.1], [0.2]], dtype=jnp.float32)
+    >>> inv_lin_params = None
+    >>> p_num = 1
+
+    >>> result = deer_mode2_iteration(
+    ...     lin_func=lin_func,
+    ...     inv_lin=inv_lin,
+    ...     func=func,
+    ...     p_num=p_num,
+    ...     params=params,
+    ...     xinput=xinput,
+    ...     inv_lin_params=inv_lin_params,
+    ...     yinit_guess=yinit_guess,
+    ...     max_iter=100,
+    ...     memory_efficient=False,
+    ...     clip_ytnext=False
+    ... )
+
+    >>> print(result)
+    [[0.4]
+     [0.3]]
     """
     # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
     # which is less efficient than lax.cond
