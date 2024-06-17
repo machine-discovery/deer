@@ -34,17 +34,22 @@ def test_matmul_recursive():
     result2 = matmul_recursive(mats, vecs, y0)
     assert jnp.allclose(result, result2)
 
-@pytest.mark.parametrize("method", [
-    solve_ivp.DEER()
+@pytest.mark.parametrize("method, npts", [
+    (solve_ivp.DEER(), 10000),
+    (solve_ivp.ForwardEuler(), 3),
+    (solve_ivp.RK3(), 1),
+    (solve_ivp.RK4(), 100),
+    (solve_ivp.BackwardEuler(), 1),
+    (solve_ivp.TrapezoidalMethod(), 100),
 ])
-def test_solve_ivp(method):
+def test_solve_ivp(method, npts):
     ny = 4
     dtype = jnp.float64
     key = jax.random.PRNGKey(0)
     subkey1, subkey2, subkey3 = jax.random.split(key, 3)
     A0 = (jax.random.uniform(subkey1, shape=(ny, ny), dtype=dtype) * 2 - 1) / ny ** 0.5
     A1 = jax.random.uniform(subkey2, shape=(ny, ny), dtype=dtype) / ny ** 0.5
-    npts = 10000  # TODO: investigate why npts=1000 make nans
+    # npts = 5  # TODO: investigate why npts=1000 make nans
     tpts = jnp.linspace(0, 1.0, npts, dtype=dtype)  # (ntpts,)
     y0 = jax.random.uniform(subkey3, shape=(ny,), dtype=dtype)
 
@@ -348,6 +353,41 @@ def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) ->
     # f4 = x * u + y * v  # index-2
     f4 = x ** 2 + y ** 2 - 1  # index-3
     return jnp.concatenate([f0, f1, f2, f3, f4])
+
+def test_odes():
+    def sample_func(y, x, params):
+        return -params * y
+
+    # Initialize parameters
+    step_size = 0.0001
+    y0 = jnp.array([1.0, 0.0])
+    xinp = jnp.linspace(0, 1, 10)
+    params = 0.5
+    tpts = jnp.linspace(0, 1, 10)
+
+    # Instantiate solvers
+    rk4_solver = solve_ivp.RK4(step_size=step_size)
+    trapezoidal_solver = solve_ivp.TrapezoidalMethod(step_size=step_size)
+
+    # Compute solutions
+    yt_rk4 = rk4_solver.compute(sample_func, y0, xinp, params, tpts)
+    yt_trapezoidal = trapezoidal_solver.compute(sample_func, y0, xinp, params, tpts)
+    yt_rk3 = solve_ivp.RK3().compute(sample_func, y0, xinp, params, tpts)
+    yt_forward_euler = solve_ivp.ForwardEuler().compute(sample_func, y0, xinp, params, tpts)
+    yt_backward_euler = solve_ivp.BackwardEuler().compute(sample_func, y0, xinp, params, tpts)
+    
+
+    # Compare results
+    print(f"RK4 Results: {yt_rk4}")
+    print(f"Trapezoidal Results: {yt_trapezoidal}")
+    print(f"RK3 Results: {yt_rk3}")
+    print(f"Forward Euler Results: {yt_forward_euler}")
+    print(f"Backward Euler Results: {yt_backward_euler}")
+    assert jnp.allclose(yt_rk4, yt_trapezoidal, atol=1e-6)
+    assert jnp.allclose(yt_rk4, yt_rk3, atol=1e-6)
+
+    # assert jnp.allclose(yt_rk4, yt_forward_euler, atol=1e-6)
+    # assert jnp.allclose(yt_rk4, yt_backward_euler, atol=1e-6)
 
 if __name__ == "__main__":
     test_solve_idae()

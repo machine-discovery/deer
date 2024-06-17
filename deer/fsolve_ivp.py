@@ -169,3 +169,237 @@ class DEER(SolveIVPMethod):
         # compute the recursive matrix multiplication
         yt = matmul_recursive(gtbar, htbar, y0)  # (nt, ny)
         return yt
+
+
+class ForwardEuler(SolveIVPMethod):
+    """
+    Compute the solution of initial value problem with the Forward Euler method.
+    
+    Arguments
+    ---------
+    step_size: float
+        The step size to use for the Euler method. If None, it will use the difference (tpts[1] - tpts[0]) divided by the number of steps.
+    """
+    def __init__(self, step_size: Optional[float] = None):
+        self.step_size = step_size
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+        y = [y0]
+        for i in range(1, len(tpts)):
+            yi = y[-1]
+            ti_prev = tpts[i-1]
+            ti_next = tpts[i]
+            xi = xinp[i-1]
+            interval = ti_next - ti_prev
+
+            # Determine the step size and number of steps within this interval
+            if self.step_size is None:
+                steps = 1
+                dt = interval
+            else:
+                steps = max(1, int(interval / self.step_size))
+                dt = interval / steps
+            
+            for _ in range(steps):
+                dydt = func(yi, xi, params)
+                yi = yi + dt * dydt
+            
+            y.append(yi)
+        
+        return jnp.stack(y)
+
+
+class RK3(SolveIVPMethod):
+    """
+    Compute the solution of initial value problem with the Runge-Kutta 3rd order method.
+
+    Arguments
+    ---------
+    step_size: float
+        The step size to use for the RK3 method. If None, it will use (tpts[1] - tpts[0]).
+    """
+    def __init__(self, step_size: Optional[float] = None):
+        self.step_size = step_size
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+        # Initialize the solution list with the initial condition
+        y = [y0]
+
+        # Iterate over time points to compute the solution at each step
+        for i in range(1, len(tpts)):
+            yi = y[-1]
+            xi = xinp[i-1]
+            ti = tpts[i-1]
+            tf = tpts[i]
+
+            # Determine the step size
+            dt = self.step_size
+            if dt is None:
+                dt = tf - ti
+
+            # Number of steps between tpts
+            num_steps = int((tf - ti) / dt)
+            dt = (tf - ti) / num_steps  # Recalculate dt to evenly divide the interval
+
+            for _ in range(num_steps):
+                k1 = func(yi, xi, params)
+                k2 = func(yi + 0.5 * dt * k1, xi + 0.5 * dt, params)
+                k3 = func(yi - dt * k1 + 2 * dt * k2, xi + dt, params)
+
+                yi = yi + (dt / 6.0) * (k1 + 4 * k2 + k3)
+                xi = xi + dt
+
+            y.append(yi)
+
+        # Stack the list of solutions into a single jax array
+        return jnp.stack(y)
+
+
+class RK4(SolveIVPMethod):
+    """
+    Compute the solution of initial value problem with the Runge-Kutta 4th order method.
+
+    Arguments
+    ---------
+    step_size: float
+        The step size to use for the RK4 method. If None, it will use (tpts[1] - tpts[0]).
+    """
+    def __init__(self, step_size: Optional[float] = None):
+        self.step_size = step_size
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+        y = [y0]
+        for i in range(1, len(tpts)):
+            yi = y[-1]
+            xi = xinp[i-1]
+            ti = tpts[i-1]
+            tf = tpts[i]
+
+            dt = self.step_size
+            if dt is None:
+                dt = tf - ti
+
+            num_steps = int((tf - ti) / dt)
+            dt = (tf - ti) / num_steps
+
+            for _ in range(num_steps):
+                k1 = func(yi, xi, params)
+                k2 = func(yi + 0.5 * dt * k1, xi + 0.5 * dt, params)
+                k3 = func(yi + 0.5 * dt * k2, xi + 0.5 * dt, params)
+                k4 = func(yi + dt * k3, xi + dt, params)
+
+                yi = yi + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
+                xi = xi + dt
+
+            y.append(yi)
+        
+        return jnp.stack(y)
+
+
+class BackwardEuler(SolveIVPMethod):
+    """
+    Compute the solution of initial value problem with the Backward Euler method.
+    
+    Arguments
+    ---------
+    step_size: float
+        The step size to use for the Euler method. If None, it will use (tpts[1] - tpts[0]).
+    tol: float
+        The tolerance for the fixed-point iteration.
+    max_iter: int
+        The maximum number of iterations for the fixed-point iteration.
+    """
+    def __init__(self, step_size: Optional[float] = None, tol: float = 1e-6, max_iter: int = 100):
+        self.step_size = step_size
+        self.tol = tol
+        self.max_iter = max_iter
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+        y = [y0]
+        for i in range(1, len(tpts)):
+            yi = y[-1]
+            xi = xinp[i-1]
+            ti = tpts[i-1]
+            tf = tpts[i]
+
+            dt = self.step_size
+            if dt is None:
+                dt = tf - ti
+
+            num_steps = int((tf - ti) / dt)
+            dt = (tf - ti) / num_steps
+
+            for _ in range(num_steps):
+                # Fixed-point iteration to solve: y_new = yi + dt * func(y_new, xi, params)
+                y_new = yi
+                for _ in range(self.max_iter):
+                    y_new_next = yi + dt * func(y_new, xi, params)
+                    if jnp.linalg.norm(y_new_next - y_new) < self.tol:
+                        y_new = y_new_next
+                        break
+                    y_new = y_new_next
+                yi = y_new
+                xi = xi + dt
+
+            y.append(yi)
+        
+        return jnp.stack(y)
+
+
+
+class TrapezoidalMethod(SolveIVPMethod):
+    """
+    Compute the solution of initial value problem with the Trapezoidal method.
+
+    Arguments
+    ---------
+    step_size: float
+        The step size to use for the Trapezoidal method. If None, it will use (tpts[1] - tpts[0]).
+    tol: float
+        The tolerance for the fixed-point iteration.
+    max_iter: int
+        The maximum number of iterations for the fixed-point iteration.
+    """
+    def __init__(self, step_size: Optional[float] = None, tol: float = 1e-6, max_iter: int = 100):
+        self.step_size = step_size
+        self.tol = tol
+        self.max_iter = max_iter
+
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+        y = [y0]
+        for i in range(1, len(tpts)):
+            yi = y[-1]
+            xi = xinp[i-1]
+            ti = tpts[i-1]
+            tf = tpts[i]
+
+            dt = self.step_size
+            if dt is None:
+                dt = tf - ti
+
+            num_steps = int((tf - ti) / dt)
+            dt = (tf - ti) / num_steps
+
+            for _ in range(num_steps):
+                # Initial guess for fixed-point iteration (use forward Euler as an initial guess)
+                y_new = yi + dt * func(yi, xi, params)
+                
+                # Fixed-point iteration to solve: y_new = yi + (dt/2) * (func(yi, xi, params) + func(y_new, xi + dt, params))
+                for _ in range(self.max_iter):
+                    y_new_next = yi + (dt / 2.0) * (func(yi, xi, params) + func(y_new, xi + dt, params))
+                    if jnp.linalg.norm(y_new_next - y_new) < self.tol:
+                        y_new = y_new_next
+                        break
+                    y_new = y_new_next
+
+                yi = y_new
+                xi = xi + dt
+
+            y.append(yi)
+
+        return jnp.stack(y)
