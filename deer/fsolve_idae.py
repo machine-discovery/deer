@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional
 import jax
 import jax.numpy as jnp
 import optimistix as optx
-from deer.deer_iter import deer_mode2_iteration
+from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
 from deer.utils import get_method_meta, check_method
 
@@ -147,14 +147,15 @@ class BwdEulerDEER(SolveIDAEMethod):
 
         xinput = (dt, xinp)
         inv_lin_params = (y0,)
-        yt = deer_mode2_iteration(
-            lin_func=linfunc,
+        yt = deer_iteration(
             inv_lin=self.solve_idae_inv_lin,
             func=func2,
+            shifter_func=linfunc,
             p_num=2,
             params=params,
             xinput=xinput,
             inv_lin_params=inv_lin_params,
+            shifter_func_params=None,
             yinit_guess=yinit_guess,
             max_iter=self.max_iter,
             memory_efficient=self.memory_efficient,
@@ -163,7 +164,7 @@ class BwdEulerDEER(SolveIDAEMethod):
         return yt
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
-                        inv_lin_params: Any) -> jnp.ndarray:
+                           inv_lin_params: Any) -> jnp.ndarray:
         # solving the equation: M0_i @ y_i + M1_i @ y_{i-1} = z_i
         # M: (nsamples, ny, ny)
         # G: (nsamples, ny, ny)
