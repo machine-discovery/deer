@@ -48,7 +48,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     --------
     >>> import jax
     >>> import jax.numpy as jnp
-    >>> from fseq1d import seq1d, Sequential
+    >>> from fseq1d import seq1d
     
     >>> def func(y, x, params):
     ...     return y ** 2 + x * params[0]
@@ -57,7 +57,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     >>> xinp = jnp.linspace(0, 1, 10).reshape(-1, 1)
     >>> params = jnp.array([0.5])
     
-    >>> y = seq1d(func, y0, xinp, params, method=Sequential())
+    >>> y = seq1d(func, y0, xinp, params, method=seq1d.Sequential())
     >>> y
     Array([[0.        ],
            [0.05555556],

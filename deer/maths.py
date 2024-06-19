@@ -33,26 +33,6 @@ def matmul_recursive(mats: jnp.ndarray, vecs: jnp.ndarray, y0: jnp.ndarray) -> j
     -------
     result: jnp.ndarray
         The result of the matrix multiplication, shape ``(nsamples, ny)``, including ``y0`` at the beginning.
-    
-    Example
-    -------
-    >>> import jax.numpy as jnp
-    >>> mats = jnp.array([
-    ...     [[1.0, 0.0],
-    ...      [0.0, 1.0]],
-    ...     [[0.5, 0.5],
-    ...      [0.5, 0.5]]
-    ... ])
-    >>> vecs = jnp.array([
-    ...     [1.0, 1.0],
-    ...     [0.0, 0.0]
-    ... ])
-    >>> y0 = jnp.array([1.0, 2.0])
-    >>> matmul_recursive(mats, vecs, y0)
-    Array([[1. , 2. ],
-           [2. , 3. ],
-           [2.5, 2.5]], dtype=float64)
-
     """
     # shift the elements by one index
     eye = jnp.eye(mats.shape[-1], dtype=mats.dtype)[None]  # (1, ny, ny)
