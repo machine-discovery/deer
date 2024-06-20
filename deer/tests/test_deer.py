@@ -91,8 +91,7 @@ def test_solve_ivp(method):
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.BwdEulerDEER(memory_efficient=True),
-    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEulerDEER(),
     solve_idae.BwdEuler(),
     ])
 def test_solve_idae(method):
@@ -151,8 +150,7 @@ def test_solve_idae(method):
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.BwdEulerDEER(memory_efficient=True),
-    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEulerDEER(),
     solve_idae.BwdEuler(),
     ])
 def test_solve_idae_derivs(method):
@@ -184,7 +182,7 @@ def test_solve_idae_derivs(method):
 @pytest.mark.parametrize(
         "jit, difficult, method",
         itertools.product([True, False], [True, False],
-                          [seq1d.DEER(memory_efficient=True), seq1d.DEER(memory_efficient=False),
+                          [seq1d.DEER(),
                            seq1d.Sequential()]))
 def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
@@ -249,8 +247,7 @@ def test_rnn(jit: bool, difficult: bool, method):
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
 
-@pytest.mark.parametrize("memory_efficient", [True, False])
-def test_rnn_derivs(memory_efficient: bool):
+def test_rnn_derivs():
     # test the rnn with the DEER framework using simple RNN function
     def rnn_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -276,7 +273,7 @@ def test_rnn_derivs(memory_efficient: bool):
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER(memory_efficient=memory_efficient))
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER())
         return hseq
 
     jax.test_util.check_grads(

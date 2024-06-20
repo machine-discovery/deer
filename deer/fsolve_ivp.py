@@ -70,14 +70,10 @@ class DEER(SolveIVPMethod):
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
-    memory_efficient: bool
-        If True, then use the memory efficient algorithm for the DEER iteration.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000,
-                 memory_efficient: bool = True):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
-        self.memory_efficient = memory_efficient
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
@@ -97,8 +93,7 @@ class DEER(SolveIVPMethod):
         inv_lin_params = (tpts, y0)
         yt = deer_iteration(
             inv_lin=self.solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
-            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter,
-            memory_efficient=self.memory_efficient)
+            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter)
         return yt
 
     def solve_ivp_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
