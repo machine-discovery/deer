@@ -43,6 +43,32 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     y: jnp.ndarray
         The output signal as the solution of the discrete difference equation ``(nsamples, ny)``,
         excluding the initial states.
+    
+    Examples
+    --------
+    >>> import jax
+    >>> import jax.numpy as jnp
+    >>> from fseq1d import seq1d
+    
+    >>> def func(y, x, params):
+    ...     return y ** 2 + x * params[0]
+    
+    >>> y0 = jnp.array([0.0])
+    >>> xinp = jnp.linspace(0, 1, 10).reshape(-1, 1)
+    >>> params = jnp.array([0.5])
+    
+    >>> y = seq1d(func, y0, xinp, params, method=seq1d.Sequential())
+    >>> y
+    Array([[0.        ],
+           [0.05555556],
+           [0.11419753],
+           [0.17970774],
+           [0.2545171 ],
+           [0.34255673],
+           [0.45067845],
+           [0.59199995],
+           [0.79490839],
+           [1.13187934]], dtype=float64)
     """
     if method is None:
         method = DEER()

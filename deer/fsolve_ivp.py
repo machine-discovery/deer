@@ -47,6 +47,31 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     -------
     y: jnp.ndarray
         The output signal as the solution of the non-linear differential equations ``(nsamples, ny)``.
+
+    Examples
+    --------
+    >>> import jax.numpy as jnp
+    >>> from fsolve_ivp import solve_ivp
+    >>>
+    >>> def simple_harmonic_oscillator(y, x, params):
+    ...     k, m = params
+    ...     dydt = jnp.array([y[1], -k/m*y[0]])
+    ...     return dydt
+    >>>
+    >>> y0 = jnp.array([1.0, 0.0])
+    >>> xinp = jnp.zeros((100, 0))  # no input signal
+    >>> params = (1.0, 1.0)  # k, m
+    >>> tpts = jnp.linspace(0, 10, 100)
+    >>>
+    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts)
+    >>> # The output y should be an array of shape (nsamples, ny)
+    >>> y.shape
+    (100, 2)
+    >>> # Check the first and last values (should be close to [1.0, 0.0] and [cos(10), -sin(10)] respectively)
+    >>> jnp.allclose(y[0], jnp.array([1.0, 0.0]))
+    Array(True, dtype=bool)
+    >>> jnp.allclose(y[-1], jnp.array([jnp.cos(10), -jnp.sin(10)]), atol=1e-2)
+    Array(True, dtype=bool)
     """
     if method is None:
         method = DEER()
