@@ -34,7 +34,9 @@ def test_matmul_recursive():
     result2 = matmul_recursive(mats, vecs, y0)
     assert jnp.allclose(result, result2)
 
-@pytest.mark.parametrize("method", [solve_ivp.DEER()])
+@pytest.mark.parametrize("method", [
+    solve_ivp.DEER()
+])
 def test_solve_ivp(method):
     ny = 4
     dtype = jnp.float64
