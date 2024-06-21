@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -21,7 +21,6 @@ def deer_iteration(
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable as 0
         max_iter: int = 100,
-        memory_efficient: bool = False,
         clip_ytnext: bool = False,
         ) -> jnp.ndarray:
     r"""
@@ -59,10 +58,6 @@ def deer_iteration(
     yinit_guess: jnp.ndarray or None
         The initial guess of the output signal (nsamples, ny).
         If None, it will be initialized as 0s.
-    memory_efficient: bool
-        If True, then do not save the Jacobian matrix for the backward pass.
-        This can save memory, but the backward pass will be slower due to recomputation of
-        the Jacobian matrix.
 
     Returns
     -------
@@ -82,7 +77,6 @@ def deer_iteration(
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
         max_iter=max_iter,
-        memory_efficient=memory_efficient,
         clip_ytnext=clip_ytnext)[0]
 
 
@@ -97,7 +91,6 @@ def deer_iteration_helper(
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable
         max_iter: int = 100,
-        memory_efficient: bool = False,
         clip_ytnext: bool = False,
         ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
     # obtain the functions to compute the jacobians and the function
@@ -143,8 +136,6 @@ def deer_iteration_helper(
     iiter = jnp.array(0, dtype=jnp.int32)
     err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
-    if memory_efficient:
-        gts = None
     return yt, gts, func
 
 
@@ -156,7 +147,6 @@ def deer_iteration_jvp(
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
         p_num: int,
         max_iter: int,
-        memory_efficient: bool,
         clip_ytnext: bool,
         # the meaningful arguments
         primals, tangents):
@@ -176,7 +166,6 @@ def deer_iteration_jvp(
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
         max_iter=max_iter,
-        memory_efficient=memory_efficient,
         clip_ytnext=clip_ytnext,
     )
 
@@ -184,10 +173,6 @@ def deer_iteration_jvp(
     func2 = jax.vmap(func, in_axes=(0, 0, None))  # vmap for y & x
 
     ytparams = shifter_func(yt, shifter_func_params)
-    if gts is None:
-        jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
-        # recompute gts
-        gts = [-gt for gt in jacfunc(ytparams, xinput, params)]
     # gts: [p_num] + (nsamples, ny, ny)
 
     # compute df (grad_func)

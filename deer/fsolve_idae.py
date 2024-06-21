@@ -122,14 +122,10 @@ class BwdEulerDEER(SolveIDAEMethod):
         If None, it will be initialized as all ``y0``.
     max_iter: int
         The maximum number of DEER iterations to perform.
-    memory_efficient: bool
-        If True, then use the memory efficient algorithm for the DEER iteration.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000,
-                 memory_efficient: bool = True):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
-        self.memory_efficient = memory_efficient
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
@@ -173,7 +169,6 @@ class BwdEulerDEER(SolveIDAEMethod):
             shifter_func_params=None,
             yinit_guess=yinit_guess,
             max_iter=self.max_iter,
-            memory_efficient=self.memory_efficient,
             clip_ytnext=True,
         )
         return yt
