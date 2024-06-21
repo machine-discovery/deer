@@ -63,7 +63,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     >>> params = (1.0, 1.0)  # k, m
     >>> tpts = jnp.linspace(0, 10, 100)
     >>>
-    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts)
+    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts).value
     >>> # The output y should be an array of shape (nsamples, ny)
     >>> y.shape
     (100, 2)

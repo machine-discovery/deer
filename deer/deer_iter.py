@@ -57,8 +57,9 @@ def deer_iteration(
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the non-linear differential equations (nsamples, ny).
+    res: Result
+        A ``Result`` object where ``.value`` is the output signal as the solution of the non-linear differential
+        equations ``(nsamples, ny)`` and ``.success`` is the boolean array of the success status of the iterations.
     """
     # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
     # which is less efficient than lax.cond

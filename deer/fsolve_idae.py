@@ -57,7 +57,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     >>> xinp = jnp.array([[0.0], [1.0], [2.0], [3.0]])
     >>> params = jnp.array([0.5])
     >>> tpts = jnp.array([0.0, 1.0, 2.0, 3.0])
-    >>> solve_idae(idae_func, y0, xinp, params, tpts)
+    >>> solve_idae(idae_func, y0, xinp, params, tpts).value
     Array([[1.    ],
            [1.25  ],
            [1.875 ],

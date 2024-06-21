@@ -9,7 +9,7 @@ import inspect
 
 class Result:
     """
-    NamedTuple to store the result of the iterative algorithm.
+    An object to store the result of the iterative algorithm.
     """
     value: jnp.ndarray
     success: jnp.ndarray  # in bool with the same shape as value
