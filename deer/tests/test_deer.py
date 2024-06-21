@@ -69,8 +69,14 @@ def test_solve_ivp(method):
 
     params = (A0, A1)
     params_np = (A0_np, A1_np)
-    yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    res = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    yt = res.value
     yt_np = solve_ivp_scipy(func_np, (tpts_np[0], tpts_np[-1]), y0_np, t_eval=tpts_np, args=params_np, rtol=1e-10, atol=1e-10).y.T
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == yt.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # import matplotlib.pyplot as plt
     # plt.plot(tpts, yt[..., 0])
@@ -83,7 +89,7 @@ def test_solve_ivp(method):
 
     # check the gradients
     def get_loss(y0, params):
-        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method).value  # (ntpts, ny)
         return jnp.sum(yt ** 2, axis=0)  # only sum over time
     jax.test_util.check_grads(
         get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
@@ -109,7 +115,13 @@ def test_solve_idae(method):
     params = g
     npts = 10000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
-    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    res = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    vrt = res.value
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == vrt.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # evaluate with numpy, but recast the problem into ODE because numpy does not have DAE solver
     def func_np(t: np.ndarray, vr: np.ndarray) -> np.ndarray:
@@ -171,7 +183,7 @@ def test_solve_idae_derivs(method):
 
     def get_loss(vr0, tpts, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method)
+        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method).value
         return hseq
 
     jax.test_util.check_grads(
@@ -224,12 +236,20 @@ def test_rnn(jit: bool, difficult: bool, method):
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    func0 = functools.partial(seq1d, method=method)
+    def func0(gru_func, h0, xinp, params):
+        return seq1d(gru_func, h0, xinp, params, method=method)
+
     if jit:
         func = jax.jit(func0, static_argnums=(0,))
     else:
         func = func0
-    hseq = func(gru_func, h0, xinp, params)  # (nsteps, nh)
+    res = func(gru_func, h0, xinp, params)  # (nsteps, nh)
+    hseq = res.value
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == hseq.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # calculate the output states using a for loop
     hfor_list = [h0]
@@ -273,7 +293,7 @@ def test_rnn_derivs():
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER())
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER()).value
         return hseq
 
     jax.test_util.check_grads(
@@ -306,7 +326,7 @@ def test_input_in_a_tree():
         return jax.nn.log_sigmoid(bi + jnp.dot(zi, wi))
 
     xinps = (b, w)
-    zk = seq1d(func_next_seq, z0, xinps, None)  # (ndepths, nh)
+    zk = seq1d(func_next_seq, z0, xinps, None).value  # (ndepths, nh)
 
     # compute the true values
     zk_trues = []

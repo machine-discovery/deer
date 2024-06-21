@@ -2,11 +2,7 @@ from typing import Callable, Any, Tuple, List, Optional
 from functools import partial
 import jax
 import jax.numpy as jnp
-
-from typing import Callable, Any, Tuple, List, Optional
-from functools import partial
-import jax
-import jax.numpy as jnp
+from deer.utils import Result
 
 
 @partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10))
@@ -66,7 +62,7 @@ def deer_iteration(
     """
     # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
     # which is less efficient than lax.cond
-    return deer_iteration_helper(
+    yt, is_converged, _, _ = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
@@ -77,7 +73,8 @@ def deer_iteration(
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
         max_iter=max_iter,
-        clip_ytnext=clip_ytnext)[0]
+        clip_ytnext=clip_ytnext)
+    return Result(yt, success=is_converged)
 
 
 def deer_iteration_helper(
@@ -100,6 +97,7 @@ def deer_iteration_helper(
     dtype = yinit_guess.dtype
     # set the tolerance to be 1e-4 if dtype is float32, else 1e-7 for float64
     tol = 1e-7 if dtype == jnp.float64 else 1e-4
+    # tol = 1e-6 if dtype == jnp.float64 else 1e-4
 
     # def iter_func(err, yt, gt_, iiter):
     def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \
@@ -136,8 +134,8 @@ def deer_iteration_helper(
     iiter = jnp.array(0, dtype=jnp.int32)
     err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
-    return yt, gts, func
-
+    is_converged = iiter < max_iter
+    return yt, is_converged, gts, func
 
 @deer_iteration.defjvp
 def deer_iteration_jvp(
@@ -155,7 +153,7 @@ def deer_iteration_jvp(
 
     # compute the iteration
     # yt: (nsamples, ny)
-    yt, gts, func = deer_iteration_helper(
+    yt, is_converged, gts, func = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
@@ -184,4 +182,6 @@ def deer_iteration_jvp(
     inv_lin2 = partial(inv_lin, gts)
     _, grad_yt = jax.jvp(inv_lin2, (rhs0, inv_lin_params), (grad_func, grad_inv_lin_params))
 
-    return yt, grad_yt
+    result = Result(yt, success=is_converged)
+    grad_result = Result(grad_yt)
+    return result, grad_result

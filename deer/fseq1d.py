@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
+from deer.utils import Result
+
 
 __all__ = ["seq1d"]
 
@@ -70,7 +72,7 @@ class Sequential(Seq1DMethod):
             y = func(yim1, x, params)
             return y, y
         _, y = jax.lax.scan(scan_fn, y0, xinp)
-        return y
+        return Result(y)
 
 class DEER(Seq1DMethod):
     """
@@ -108,11 +110,11 @@ class DEER(Seq1DMethod):
             return [y]
 
         # perform the deer iteration
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
             inv_lin_params=(y0,), shifter_func_params=(y0,),
             yinit_guess=yinit_guess, max_iter=self.max_iter, clip_ytnext=True)
-        return yt
+        return result
 
     def seq1d_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                       inv_lin_params: Tuple[jnp.ndarray]) -> jnp.ndarray:

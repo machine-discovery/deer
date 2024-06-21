@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optimistix as optx
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method
+from deer.utils import get_method_meta, check_method, Result
 
 
 __all__ = ["solve_idae"]
@@ -94,7 +94,8 @@ class BwdEuler(SolveIDAEMethod):
         xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
         _, y = jax.lax.scan(scan_fn, y0, (xi, dti))  # (nsamples - 1, ny)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
-        return y
+        # TODO: turn off the throw error in Newton, and check the convergence to be put in the Result here
+        return Result(y)
 
 class BwdEulerDEER(SolveIDAEMethod):
     """
@@ -143,7 +144,7 @@ class BwdEulerDEER(SolveIDAEMethod):
 
         xinput = (dt, xinp)
         inv_lin_params = (y0,)
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.solve_idae_inv_lin,
             func=func2,
             shifter_func=linfunc,
@@ -156,7 +157,7 @@ class BwdEulerDEER(SolveIDAEMethod):
             max_iter=self.max_iter,
             clip_ytnext=True,
         )
-        return yt
+        return result
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
                            inv_lin_params: Any) -> jnp.ndarray:

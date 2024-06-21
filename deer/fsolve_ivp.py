@@ -91,10 +91,10 @@ class DEER(SolveIVPMethod):
 
         # perform the deer iteration
         inv_lin_params = (tpts, y0)
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
             inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter)
-        return yt
+        return result
 
     def solve_ivp_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                           inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
