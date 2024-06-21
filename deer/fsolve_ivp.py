@@ -45,8 +45,9 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the non-linear differential equations ``(nsamples, ny)``.
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IVP system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
 
     Examples
     --------

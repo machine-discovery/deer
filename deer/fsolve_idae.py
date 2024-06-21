@@ -48,6 +48,12 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
 
+    Returns
+    -------
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IDAE system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
+
     Examples
     --------
     >>> import jax.numpy as jnp

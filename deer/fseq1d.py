@@ -42,10 +42,10 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the discrete difference equation ``(nsamples, ny)``,
-        excluding the initial states.
-    
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the sequential model with shape ``(nsamples, ny)``
+        and ``.success`` is the boolean array indicating the convergence of the solver.
+
     Examples
     --------
     >>> import jax
