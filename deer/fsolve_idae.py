@@ -144,10 +144,17 @@ class BwdEulerDEER(SolveIDAEMethod):
         If None, it will be initialized as all ``y0``.
     max_iter: int
         The maximum number of DEER iterations to perform.
+    atol: Optional[float]
+        The absolute tolerance of the DEER iteration convergence.
+    rtol: Optional[float]
+        The relative tolerance of the DEER iteration convergence.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200, atol: Optional[float] = None,
+                 rtol: Optional[float] = None):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
+        self.atol = atol
+        self.rtol = rtol
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
@@ -192,6 +199,8 @@ class BwdEulerDEER(SolveIDAEMethod):
             yinit_guess=yinit_guess,
             max_iter=self.max_iter,
             clip_ytnext=True,
+            atol=self.atol,
+            rtol=self.rtol,
         )
         return result
 

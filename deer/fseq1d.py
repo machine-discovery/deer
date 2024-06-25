@@ -111,10 +111,17 @@ class DEER(Seq1DMethod):
         If None, it will be initialized as all ``y0``.
     max_iter: int
         The maximum number of DEER iterations to perform.
+    atol: Optional[float]
+        The absolute tolerance of the DEER iteration convergence.
+    rtol: Optional[float]
+        The relative tolerance of the DEER iteration convergence.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000, atol: Optional[float] = None,
+                 rtol: Optional[float] = None):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
+        self.atol = atol
+        self.rtol = rtol
 
     def compute(self, func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any):
@@ -139,7 +146,8 @@ class DEER(Seq1DMethod):
         result = deer_iteration(
             inv_lin=self.seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
             inv_lin_params=(y0,), shifter_func_params=(y0,),
-            yinit_guess=yinit_guess, max_iter=self.max_iter, clip_ytnext=True)
+            yinit_guess=yinit_guess, max_iter=self.max_iter, clip_ytnext=True,
+            atol=self.atol, rtol=self.rtol)
         return result
 
     def seq1d_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,

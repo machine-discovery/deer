@@ -96,10 +96,17 @@ class DEER(SolveIVPMethod):
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
+    atol: Optional[float]
+        The absolute tolerance for the convergence of the solver.
+    rtol: Optional[float]
+        The relative tolerance for the convergence of the solver.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000,
+                 atol: Optional[float] = None, rtol: Optional[float] = None):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
+        self.atol = atol
+        self.rtol = rtol
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray) -> Result:
@@ -119,7 +126,8 @@ class DEER(SolveIVPMethod):
         inv_lin_params = (tpts, y0)
         result = deer_iteration(
             inv_lin=self.solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
-            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter)
+            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter,
+            clip_ytnext=True, atol=self.atol, rtol=self.rtol)
         return result
 
     def solve_ivp_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
