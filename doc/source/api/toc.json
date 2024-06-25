@@ -4,7 +4,8 @@
       "api": {
         "solve_ivp": "Solving initial value problem (IVP)",
         "solve_idae": "Solving implicit differential algebraic equation",
-        "seq1d": "Evaluating discrete sequential model"
+        "seq1d": "Evaluating discrete sequential model",
+        "root": "Finding root of a function"
       }
     }
 }
