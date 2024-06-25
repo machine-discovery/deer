@@ -45,8 +45,9 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the non-linear differential equations ``(nsamples, ny)``.
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IVP system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
 
     Examples
     --------
@@ -63,7 +64,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     >>> params = (1.0, 1.0)  # k, m
     >>> tpts = jnp.linspace(0, 10, 100)
     >>>
-    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts)
+    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts).value
     >>> # The output y should be an array of shape (nsamples, ny)
     >>> y.shape
     (100, 2)
@@ -116,10 +117,10 @@ class DEER(SolveIVPMethod):
 
         # perform the deer iteration
         inv_lin_params = (tpts, y0)
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
             inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter)
-        return yt
+        return result
 
     def solve_ivp_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                           inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:

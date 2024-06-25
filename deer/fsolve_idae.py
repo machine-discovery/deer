@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import optimistix as optx
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method
+from deer.utils import get_method_meta, check_method, Result
 
 
 __all__ = ["solve_idae"]
@@ -48,6 +48,12 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
 
+    Returns
+    -------
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IDAE system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
+
     Examples
     --------
     >>> import jax.numpy as jnp
@@ -57,7 +63,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     >>> xinp = jnp.array([[0.0], [1.0], [2.0], [3.0]])
     >>> params = jnp.array([0.5])
     >>> tpts = jnp.array([0.0, 1.0, 2.0, 3.0])
-    >>> solve_idae(idae_func, y0, xinp, params, tpts)
+    >>> solve_idae(idae_func, y0, xinp, params, tpts).value
     Array([[1.    ],
            [1.25  ],
            [1.875 ],
@@ -109,7 +115,8 @@ class BwdEuler(SolveIDAEMethod):
         xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
         _, y = jax.lax.scan(scan_fn, y0, (xi, dti))  # (nsamples - 1, ny)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
-        return y
+        # TODO: turn off the throw error in Newton, and check the convergence to be put in the Result here
+        return Result(y)
 
 class BwdEulerDEER(SolveIDAEMethod):
     """
@@ -158,7 +165,7 @@ class BwdEulerDEER(SolveIDAEMethod):
 
         xinput = (dt, xinp)
         inv_lin_params = (y0,)
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.solve_idae_inv_lin,
             func=func2,
             shifter_func=linfunc,
@@ -171,7 +178,7 @@ class BwdEulerDEER(SolveIDAEMethod):
             max_iter=self.max_iter,
             clip_ytnext=True,
         )
-        return yt
+        return result
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
                            inv_lin_params: Any) -> jnp.ndarray:

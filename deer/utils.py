@@ -1,9 +1,37 @@
-from typing import Callable
+from typing import Callable, Union
+import jax
+import jax.numpy as jnp
 from collections import OrderedDict
 from textwrap import dedent, indent
 from abc import ABCMeta
 import inspect
 
+
+class Result:
+    """
+    An object to store the result of the iterative algorithm.
+    """
+    value: jnp.ndarray
+    success: jnp.ndarray  # in bool with the same shape as value
+
+    def __init__(self, value: jnp.ndarray, success: Union[bool, None, jnp.ndarray] = None):
+        self.value = value
+        if success is None:
+            success = jnp.array(True)
+        elif isinstance(success, bool):
+            success = jnp.array(success)
+        elif isinstance(success, jnp.ndarray):
+            assert success.dtype == jnp.bool
+        else:
+            raise TypeError("`success` must be a boolean or a jnp.ndarray of dtype bool.")
+        success = jnp.broadcast_to(success, value.shape)
+        self.success = success
+
+jax.tree_util.register_pytree_node(
+    Result,
+    lambda res: ((res.value, res.success), None),  # flatten
+    lambda aux_data, children: Result(*children),  # unflatten
+)
 
 def get_method_meta(func: Callable):
     """

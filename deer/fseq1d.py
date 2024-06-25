@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
+from deer.utils import Result
+
 
 __all__ = ["seq1d"]
 
@@ -40,10 +42,10 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the discrete difference equation ``(nsamples, ny)``,
-        excluding the initial states.
-    
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the sequential model with shape ``(nsamples, ny)``
+        and ``.success`` is the boolean array indicating the convergence of the solver.
+
     Examples
     --------
     >>> import jax
@@ -57,7 +59,7 @@ def seq1d(func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
     >>> xinp = jnp.linspace(0, 1, 10).reshape(-1, 1)
     >>> params = jnp.array([0.5])
     
-    >>> y = seq1d(func, y0, xinp, params, method=seq1d.Sequential())
+    >>> y = seq1d(func, y0, xinp, params, method=seq1d.Sequential()).value
     >>> y
     Array([[0.        ],
            [0.05555556],
@@ -96,7 +98,7 @@ class Sequential(Seq1DMethod):
             y = func(yim1, x, params)
             return y, y
         _, y = jax.lax.scan(scan_fn, y0, xinp)
-        return y
+        return Result(y)
 
 class DEER(Seq1DMethod):
     """
@@ -134,11 +136,11 @@ class DEER(Seq1DMethod):
             return [y]
 
         # perform the deer iteration
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.seq1d_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
             inv_lin_params=(y0,), shifter_func_params=(y0,),
             yinit_guess=yinit_guess, max_iter=self.max_iter, clip_ytnext=True)
-        return yt
+        return result
 
     def seq1d_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                       inv_lin_params: Tuple[jnp.ndarray]) -> jnp.ndarray:
