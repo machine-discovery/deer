@@ -6,6 +6,7 @@ import optimistix as optx
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
 from deer.utils import get_method_meta, check_method, Result
+from deer.froot import root, RootMethod
 
 
 __all__ = ["solve_idae"]
@@ -86,12 +87,12 @@ class BwdEuler(SolveIDAEMethod):
 
     Arguments
     ---------
-    solver: Optional[optx.AbstractRootFinder]
+    solver: Optional[RootMethod]
         The root finder solver. If None, then use the Newton's method.
     """
-    def __init__(self, solver: Optional[optx.AbstractRootFinder] = None):
+    def __init__(self, solver: Optional[RootMethod] = None):
         if solver is None:
-            solver = optx.Newton(rtol=1e-6, atol=1e-6)
+            solver = root.Newton(max_iter=200, atol=1e-6, rtol=1e-3)
         self.solver = solver
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
@@ -105,18 +106,32 @@ class BwdEuler(SolveIDAEMethod):
             return func((yi - yim1) / dti, yi, xi, params)
 
         def scan_fn(carry, x):
-            yprev = carry
-            xi, dti = x
-            sol = optx.root_find(fn, self.solver, yprev, (yprev, xi, dti, params))
-            yi = sol.value
-            return yi, yi
+            _, success = carry
+
+            def success_fn(carry, x):
+                yprev, success = carry
+                xi, dti = x
+                sol = root(fn, yprev, (yprev, xi, dti, params), method=self.solver)
+                yi = sol.value
+                success = sol.success
+                return yi, success
+
+            def fail_fn(carry, x):
+                yprev, _ = carry
+                return yprev, jnp.full_like(yprev, False, dtype=jnp.bool)
+
+            res = jax.lax.cond(jnp.all(success), success_fn, fail_fn, carry, x)
+            return res, res
 
         dti = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
-        _, y = jax.lax.scan(scan_fn, y0, (xi, dti))  # (nsamples - 1, ny)
+        carry = (y0, jnp.full_like(y0, True, dtype=jnp.bool))
+        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti))  # (nsamples - 1, ny)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
+        # (nsamples, ny)
+        success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
         # TODO: turn off the throw error in Newton, and check the convergence to be put in the Result here
-        return Result(y)
+        return Result(y, success)
 
 class BwdEulerDEER(SolveIDAEMethod):
     """
