@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional, Tuple
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method
+from deer.utils import get_method_meta, check_method, Result
 
 
 __all__ = ["solve_ivp"]
@@ -12,7 +12,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
               tpts: jnp.ndarray,
               method: Optional["SolveIVPMethod"] = None,
-              ) -> jnp.ndarray:
+              ) -> Result:
     r"""
     Solve the initial value problem.
     
@@ -82,7 +82,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 class SolveIVPMethod(metaclass=get_method_meta(solve_ivp)):
     @abstractmethod
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray) -> Result:
         pass
 
 class DEER(SolveIVPMethod):
@@ -102,7 +102,7 @@ class DEER(SolveIVPMethod):
         self.max_iter = max_iter
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray) -> Result:
         # set the default initial guess
         yinit_guess = self.yinit_guess
         if yinit_guess is None:
