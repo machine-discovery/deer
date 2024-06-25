@@ -17,20 +17,20 @@ class Result:
     def __init__(self, value: jnp.ndarray, success: Union[bool, None, jnp.ndarray] = None):
         self.value = value
         if success is None:
-            success = jnp.array(True)
+            success = jnp.full_like(value, True, dtype=jnp.bool)
         elif isinstance(success, bool):
-            success = jnp.array(success)
+            success = jnp.full_like(value, success, dtype=jnp.bool)
         elif isinstance(success, jnp.ndarray):
             assert success.dtype == jnp.bool
-        else:
-            raise TypeError("`success` must be a boolean or a jnp.ndarray of dtype bool.")
-        success = jnp.broadcast_to(success, value.shape)
+            success = jnp.broadcast_to(success, value.shape)
+        # no else with type error because sometimes the JAX tracer put strings of the type in the inputs
+        # TODO: think how to handle this
         self.success = success
 
 jax.tree_util.register_pytree_node(
     Result,
-    lambda res: ((res.value, res.success), None),  # flatten
-    lambda aux_data, children: Result(*children),  # unflatten
+    (lambda res: ((res.value, res.success), None)),  # flatten
+    (lambda aux_data, children: Result(*children)),  # unflatten
 )
 
 def get_method_meta(func: Callable):
