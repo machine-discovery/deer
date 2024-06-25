@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
 from deer.maths import matmul_recursive
-from deer import solve_ivp, solve_idae, seq1d
+from deer import solve_ivp, solve_idae, seq1d, root
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -188,6 +188,44 @@ def test_solve_idae_derivs(method):
 
     jax.test_util.check_grads(
         get_loss, (vr0, tpts, params), order=1, modes=['rev', 'fwd'],
+        # atol, rtol, eps following torch.autograd.gradcheck
+        atol=1e-5, rtol=1e-3, eps=1e-6)
+
+@pytest.mark.parametrize("method", [
+    root.Newton(atol=1e-8, rtol=1e-4),
+    ])
+def test_root(method):
+    def func(y, params):
+        w1, b1, w2 = params
+        return jnp.tanh(w2 @ jnp.tanh(w1 @ y + b1)) + y
+
+    # generate random parameters
+    key = jax.random.PRNGKey(0)
+    nh = 5
+    key, *subkey = jax.random.split(key, 4)
+    w1 = (jax.random.uniform(subkey[0], (nh, nh)) * 2 - 1) / nh ** 0.5
+    b1 = (jax.random.uniform(subkey[1], (nh,)) * 2 - 1) / nh ** 0.5
+    w2 = (jax.random.uniform(subkey[2], (nh, nh)) * 2 - 1) / nh ** 0.5
+    params = (w1, b1, w2)
+    y0 = jnp.zeros(nh)
+    res = root(func, y0, params, method=method)
+    y = res.value
+
+    # check the success
+    assert res.success.shape == y.shape
+    assert jnp.all(res.success)
+
+    # check the outputs
+    funcy = func(y, params)
+    zeros = jnp.zeros(nh)
+    assert jnp.allclose(funcy, zeros)
+
+    def get_loss(y0, params):
+        yt = root(func, y0, params, method=method).value
+        return yt
+
+    jax.test_util.check_grads(
+        get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
