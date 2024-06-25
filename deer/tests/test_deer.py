@@ -377,6 +377,16 @@ def test_input_in_a_tree():
     # check the outputs
     assert jnp.allclose(zk, zk_true, atol=1e-6)
 
+def test_root_inf_nan_gradient():
+    # test if the root can handle the case where the gradient of the function is zero in one place
+    def func(y, params):
+        return y ** 2 - 1
+    y0 = jnp.array([0.0])
+    val = root(func, y0, None, method=root.Newton()).value
+    assert not jnp.isnan(val)
+    assert not jnp.isinf(val)
+    assert jnp.allclose(jnp.abs(val), val * 0 + 1.0)
+
 ## helper functions ##
 def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) -> jnp.ndarray:
     # pendulum problem:

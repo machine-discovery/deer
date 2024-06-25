@@ -15,7 +15,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
                y0: jnp.ndarray, xinp: Any, params: Any,
                tpts: jnp.ndarray,
                method: Optional["SolveIDAEMethod"] = None,
-               ) -> jnp.ndarray:
+               ) -> Result:
     r"""
     Solve the implicit differential algebraic equations (IDAE) systems.
 
@@ -78,7 +78,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
 class SolveIDAEMethod(metaclass=get_method_meta(solve_idae)):
     @abstractmethod
     def compute(self, func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         pass
 
 class BwdEuler(SolveIDAEMethod):
@@ -96,7 +96,7 @@ class BwdEuler(SolveIDAEMethod):
         self.solver = solver
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
@@ -150,7 +150,7 @@ class BwdEulerDEER(SolveIDAEMethod):
         self.max_iter = max_iter
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points

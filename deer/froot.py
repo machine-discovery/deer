@@ -78,6 +78,12 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
         jac = jax.jacfwd(func)(y, params)
         fy = func(y, params)
         ynext = y - jnp.linalg.solve(jac, fy)
+
+        # clip nans and infs
+        clip = 1e8
+        ynext = jnp.clip(ynext, min=-clip, max=clip)
+        ynext = jnp.where(jnp.isnan(ynext), 0.0, ynext)
+
         err = jnp.abs(ynext - y)
         tol = atol + rtol * jnp.abs(ynext)
         iiter += 1
