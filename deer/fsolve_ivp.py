@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Any, Callable, List, Optional, Tuple
+import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
@@ -180,36 +181,27 @@ class GeneralODE(SolveIVPMethod):
     step_size: float
         The step size for ODE solver. If None, it will use (tpts[i] - tpts[i - 1]).
     """
-    def __init__(self, step_size: Optional[float] = None):
-        self.step_size = step_size
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
-        # Initialize the solution list with the initial condition
-        y = [y0]
-
-        # Iterate over time points to compute the solution at each step
-        for i in range(1, len(tpts)):
-            yi = y[-1]
+        
+        # Define the main function to cover all time intervals
+        def scan_step(yi, i):
             xi = xinp[i-1]
-            xf = xinp[i]
-            ti = tpts[i-1]
-            tf = tpts[i]
+            dx = xinp[i] - xinp[i-1]
+            dt = tpts[i] - tpts[i-1]
 
-            # Determine the step size
-            dt = self.step_size if self.step_size is not None else (tf - ti)
+            yn = self.ode_step(func, yi, xi, dt, dx, params)
+            return yn, yn
 
-            # Number of steps between tpts, at least 1
-            num_steps = max(int((tf - ti) / dt), 1)
-            dt = (tf - ti) / num_steps  # Recalculate dt to evenly divide the interval
-            dx = (xf - xi) / (tf - ti) * dt
+        _, y = jax.lax.scan(scan_step, y0, jnp.arange(1, len(tpts)))
+        
+        y = jnp.concatenate([y0[None, :], y], axis=0)
 
-            for _ in range(num_steps):
-                yi, xi = self.ode_step(func, yi, xi, dt, dx, params)
-            y.append(yi)
+        return y
 
-        # Stack the list of solutions into a single jax array
-        return jnp.stack(y)
+# Note that `self.ode_step` should be adjusted to properly work with jax if it isn't already.
+
 
     @abstractmethod
     def ode_step(
@@ -241,8 +233,8 @@ class GeneralODE(SolveIVPMethod):
 
         Returns
         -------
-        Tuple[jnp.ndarray, jnp.ndarray]
-            The state of the system and input at the end of the time step.
+        jnp.ndarray
+            The state of the system at the end of the time step.
         """
         pass
 
@@ -266,8 +258,7 @@ class ForwardEuler(GeneralODE):
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         k = func(yi, xi, params)
         yi_new = yi + dt * k
-        xi_new = xi + dx
-        return yi_new, xi_new
+        return yi_new
 
 
 class RK3(GeneralODE):
@@ -294,8 +285,7 @@ class RK3(GeneralODE):
         k3 = func(yi + 0.25 * dt * (k1 + k2), xi + 0.5 * dx, params)
 
         yi = yi + (dt / 6.0) * (k1 + k2 + 4 * k3)
-        xi = xi + dx
-        return yi, xi
+        return yi
 
 
 class RK4(GeneralODE):
@@ -323,8 +313,7 @@ class RK4(GeneralODE):
         k4 = func(yi + dt * k3, xi + dx, params)
 
         yi = yi + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
-        xi = xi + dx
-        return yi, xi
+        return yi
 
 
 class GeneralBackwardODE(GeneralODE):
@@ -340,8 +329,7 @@ class GeneralBackwardODE(GeneralODE):
     max_iter: int
         The maximum number of iterations for the fixed-point iteration.
     """
-    def __init__(self, step_size: Optional[float] = None, tol: float = 1e-6, max_iter: int = 100):
-        super().__init__(step_size)
+    def __init__(self, tol: float = 1e-6, max_iter: int = 100):
         self.tol = tol
         self.max_iter = max_iter
 
@@ -360,15 +348,26 @@ class BackwardEuler(GeneralBackwardODE):
         dx: jnp.ndarray,
         params: Any
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        y_new = yi
-        for _ in range(self.max_iter):
+        
+        def cond(val):
+            y_new, y_new_next, i = val
+            return jnp.logical_and(i < self.max_iter, jnp.linalg.norm(y_new_next - y_new) >= self.tol)
+        
+        def body(val):
+            y_new, _, i = val
             y_new_next = yi + dt * func(y_new, xi, params)
-            if jnp.linalg.norm(y_new_next - y_new) < self.tol:
-                y_new = y_new_next
-                break
-            y_new = y_new_next
-        xi_new = xi + dx
-        return y_new, xi_new
+            return y_new_next, y_new_next, i + 1
+        
+        # Initial values for y_new and y_new_next
+        y_new = yi
+        y_new_next = yi + dt * func(y_new, xi, params)
+        val = (y_new, y_new_next, 0)
+        
+        # Use jax.lax.while_loop to iterate while the condition is met
+        y_new, _, _ = jax.lax.while_loop(cond, body, val)
+        
+        return y_new
+
 
 
 class TrapezoidalMethod(GeneralBackwardODE):
@@ -384,17 +383,22 @@ class TrapezoidalMethod(GeneralBackwardODE):
         dt: jnp.ndarray,
         dx: jnp.ndarray,
         params: Any
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> jnp.ndarray:
+        def body_fn(state):
+            y_new, _, i = state
+            print(_, i)
+            y_new_next = yi + (dt / 2.0) * (func(yi, xi, params) + func(y_new, xi + dx, params))
+            return y_new_next, jnp.linalg.norm(y_new_next - y_new), i + 1
+        
+        def cond_fn(state):
+            _, diff_norm, i = state
+            print(i, diff_norm >= self.tol)
+            return jnp.logical_and(i < self.max_iter, diff_norm >= self.tol)
+        
         # Initial guess for fixed-point iteration (use forward Euler as an initial guess)
         y_new = yi + dt * func(yi, xi, params)
         
-        # Fixed-point iteration to solve the trapezoidal equation
-        for _ in range(self.max_iter):
-            y_new_next = yi + (dt / 2.0) * (func(yi, xi, params) + func(y_new, xi + dx, params))
-            if jnp.linalg.norm(y_new_next - y_new) < self.tol:
-                y_new = y_new_next
-                break
-            y_new = y_new_next
+        # Run the fixed-point iteration loop using lax.while_loop
+        y_new, _, _ = jax.lax.while_loop(cond_fn, body_fn, (y_new, jnp.inf, 0))
 
-        xi_new = xi + dx
-        return y_new, xi_new
+        return y_new

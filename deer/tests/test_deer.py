@@ -351,11 +351,11 @@ def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) ->
 
 
 @pytest.mark.parametrize("method, atol", [
-    (solve_ivp.RK3(step_size=0.001), 1e-6),
-    (solve_ivp.RK4(step_size=0.001), 1e-6),
-    (solve_ivp.ForwardEuler(step_size=0.001), 1e-2),  # Forward Euler has a larger error
-    (solve_ivp.BackwardEuler(step_size=0.001), 1e-2),  # Backward Euler has a larger error
-    (solve_ivp.TrapezoidalMethod(step_size=0.001), 1e-6)
+    (solve_ivp.RK3(), 1e-6),
+    (solve_ivp.RK4(), 1e-6),
+    (solve_ivp.ForwardEuler(), 1e-2),  # Forward Euler has a larger error
+    (solve_ivp.BackwardEuler(), 1e-2),  # Backward Euler has a larger error
+    (solve_ivp.TrapezoidalMethod(), 1e-6)
 ])
 def test_ODEs(method, atol: float):
     def sample_func(y, x, params):
@@ -364,7 +364,7 @@ def test_ODEs(method, atol: float):
     # Initialize parameters
     y0 = jnp.array([1.0, 0.0, -1.0])
     params = -2
-    tpts = jnp.linspace(0, 0.5, 6)
+    tpts = jnp.linspace(0, 0.5, 1000)
     xinp = jnp.sin(tpts * 2 * jnp.pi)
 
     # Compute reference solution using DEER method
