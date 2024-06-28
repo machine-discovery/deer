@@ -438,7 +438,7 @@ def test_ODEs(method, atol: float):
     yt_method = solve_ivp(sample_func, y0, xinp, params, tpts, method=method)
 
     # Compare results
-    assert jnp.allclose(yt_deer, yt_method, atol=atol)
+    assert jnp.allclose(yt_deer.value, yt_method.value, atol=atol)
 
 if __name__ == "__main__":
     test_solve_idae()

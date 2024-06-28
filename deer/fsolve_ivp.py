@@ -171,11 +171,6 @@ class DEER(SolveIVPMethod):
 class GeneralODE(SolveIVPMethod):
     """
     Compute the solution of initial value problem with the ODE methods.
-
-    Arguments
-    ---------
-    step_size: float
-        The step size for ODE solver. If None, it will use (tpts[i] - tpts[i - 1]).
     """
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
@@ -194,7 +189,7 @@ class GeneralODE(SolveIVPMethod):
         
         y = jnp.concatenate([y0[None, :], y], axis=0)
 
-        return y
+        return Result(y, True)
 
 # Note that `self.ode_step` should be adjusted to properly work with jax if it isn't already.
 
