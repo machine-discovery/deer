@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
 from deer.maths import matmul_recursive
-from deer import solve_ivp, solve_idae, seq1d
+from deer import solve_ivp, solve_idae, seq1d, root
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -69,8 +69,14 @@ def test_solve_ivp(method):
 
     params = (A0, A1)
     params_np = (A0_np, A1_np)
-    yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    res = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    yt = res.value
     yt_np = solve_ivp_scipy(func_np, (tpts_np[0], tpts_np[-1]), y0_np, t_eval=tpts_np, args=params_np, rtol=1e-10, atol=1e-10).y.T
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == yt.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # import matplotlib.pyplot as plt
     # plt.plot(tpts, yt[..., 0])
@@ -83,7 +89,7 @@ def test_solve_ivp(method):
 
     # check the gradients
     def get_loss(y0, params):
-        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+        yt = solve_ivp(func, y0, tpts[..., None], params, tpts, method=method).value  # (ntpts, ny)
         return jnp.sum(yt ** 2, axis=0)  # only sum over time
     jax.test_util.check_grads(
         get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
@@ -91,8 +97,7 @@ def test_solve_ivp(method):
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.BwdEulerDEER(memory_efficient=True),
-    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEulerDEER(),
     solve_idae.BwdEuler(),
     ])
 def test_solve_idae(method):
@@ -110,7 +115,13 @@ def test_solve_idae(method):
     params = g
     npts = 10000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
-    vrt = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    res = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
+    vrt = res.value
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == vrt.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # evaluate with numpy, but recast the problem into ODE because numpy does not have DAE solver
     def func_np(t: np.ndarray, vr: np.ndarray) -> np.ndarray:
@@ -151,8 +162,7 @@ def test_solve_idae(method):
     assert jnp.all((vrt[:, 4] - vrt_np[:, 4]) / jnp.max(jnp.abs(vrt_np[:, 4])) < 1e-2)
 
 @pytest.mark.parametrize("method", [
-    solve_idae.BwdEulerDEER(memory_efficient=True),
-    solve_idae.BwdEulerDEER(memory_efficient=False),
+    solve_idae.BwdEulerDEER(),
     solve_idae.BwdEuler(),
     ])
 def test_solve_idae_derivs(method):
@@ -171,21 +181,58 @@ def test_solve_idae_derivs(method):
     npts = 1000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
 
-    # excluding the initial condition here because the initial conditions cannot be freely changed
-    def get_loss(tpts, params: Any) -> jnp.ndarray:
+    def get_loss(vr0, tpts, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method)
+        hseq = solve_idae(dae_pendulum, vr0, jnp.zeros_like(tpts[..., None]), params, tpts, method=method).value
         return hseq
 
     jax.test_util.check_grads(
-        get_loss, (tpts, params,), order=1, modes=['rev', 'fwd'],
+        get_loss, (vr0, tpts, params), order=1, modes=['rev', 'fwd'],
+        # atol, rtol, eps following torch.autograd.gradcheck
+        atol=1e-5, rtol=1e-3, eps=1e-6)
+
+@pytest.mark.parametrize("method", [
+    root.Newton(atol=1e-8, rtol=1e-4),
+    ])
+def test_root(method):
+    def func(y, params):
+        w1, b1, w2 = params
+        return jnp.tanh(w2 @ jnp.tanh(w1 @ y + b1)) + y
+
+    # generate random parameters
+    key = jax.random.PRNGKey(0)
+    nh = 5
+    key, *subkey = jax.random.split(key, 4)
+    w1 = (jax.random.uniform(subkey[0], (nh, nh)) * 2 - 1) / nh ** 0.5
+    b1 = (jax.random.uniform(subkey[1], (nh,)) * 2 - 1) / nh ** 0.5
+    w2 = (jax.random.uniform(subkey[2], (nh, nh)) * 2 - 1) / nh ** 0.5
+    params = (w1, b1, w2)
+    y0 = jnp.zeros(nh)
+    res = root(func, y0, params, method=method)
+    y = res.value
+
+    # check the success
+    assert res.success.shape == y.shape
+    assert jnp.all(res.success)
+
+    # check the outputs
+    funcy = func(y, params)
+    zeros = jnp.zeros(nh)
+    assert jnp.allclose(funcy, zeros)
+
+    def get_loss(y0, params):
+        yt = root(func, y0, params, method=method).value
+        return yt
+
+    jax.test_util.check_grads(
+        get_loss, (y0, params), order=1, modes=['rev', 'fwd'],
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
 @pytest.mark.parametrize(
         "jit, difficult, method",
         itertools.product([True, False], [True, False],
-                          [seq1d.DEER(memory_efficient=True), seq1d.DEER(memory_efficient=False),
+                          [seq1d.DEER(),
                            seq1d.Sequential()]))
 def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
@@ -227,12 +274,20 @@ def test_rnn(jit: bool, difficult: bool, method):
     h0 = jax.random.normal(subkey2, shape=(nh,), dtype=dtype)
 
     # calculate the output states using seq1d
-    func0 = functools.partial(seq1d, method=method)
+    def func0(gru_func, h0, xinp, params):
+        return seq1d(gru_func, h0, xinp, params, method=method)
+
     if jit:
         func = jax.jit(func0, static_argnums=(0,))
     else:
         func = func0
-    hseq = func(gru_func, h0, xinp, params)  # (nsteps, nh)
+    res = func(gru_func, h0, xinp, params)  # (nsteps, nh)
+    hseq = res.value
+
+    # check if res.success has the same shape as yt
+    assert res.success.shape == hseq.shape
+    # check if it all success
+    assert jnp.all(res.success)
 
     # calculate the output states using a for loop
     hfor_list = [h0]
@@ -250,8 +305,7 @@ def test_rnn(jit: bool, difficult: bool, method):
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
 
-@pytest.mark.parametrize("memory_efficient", [True, False])
-def test_rnn_derivs(memory_efficient: bool):
+def test_rnn_derivs():
     # test the rnn with the DEER framework using simple RNN function
     def rnn_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # hprev: (nh,)
@@ -277,7 +331,7 @@ def test_rnn_derivs(memory_efficient: bool):
 
     def get_loss(h0: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
         # (nsteps, nh)
-        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER(memory_efficient=memory_efficient))
+        hseq = seq1d(rnn_func, h0, xinp, params, method=seq1d.DEER()).value
         return hseq
 
     jax.test_util.check_grads(
@@ -310,7 +364,7 @@ def test_input_in_a_tree():
         return jax.nn.log_sigmoid(bi + jnp.dot(zi, wi))
 
     xinps = (b, w)
-    zk = seq1d(func_next_seq, z0, xinps, None)  # (ndepths, nh)
+    zk = seq1d(func_next_seq, z0, xinps, None).value  # (ndepths, nh)
 
     # compute the true values
     zk_trues = []
@@ -322,6 +376,16 @@ def test_input_in_a_tree():
 
     # check the outputs
     assert jnp.allclose(zk, zk_true, atol=1e-6)
+
+def test_root_inf_nan_gradient():
+    # test if the root can handle the case where the gradient of the function is zero in one place
+    def func(y, params):
+        return y ** 2 - 1
+    y0 = jnp.array([0.0])
+    val = root(func, y0, None, method=root.Newton()).value
+    assert not jnp.isnan(val)
+    assert not jnp.isinf(val)
+    assert jnp.allclose(jnp.abs(val), val * 0 + 1.0)
 
 ## helper functions ##
 def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) -> jnp.ndarray:

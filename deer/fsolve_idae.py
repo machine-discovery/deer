@@ -3,9 +3,10 @@ from typing import Any, Callable, List, Optional
 import jax
 import jax.numpy as jnp
 import optimistix as optx
-from deer.deer_iter import deer_mode2_iteration
+from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method
+from deer.utils import get_method_meta, check_method, Result
+from deer.froot import root, RootMethod
 
 
 __all__ = ["solve_idae"]
@@ -14,7 +15,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
                y0: jnp.ndarray, xinp: Any, params: Any,
                tpts: jnp.ndarray,
                method: Optional["SolveIDAEMethod"] = None,
-               ) -> jnp.ndarray:
+               ) -> Result:
     r"""
     Solve the implicit differential algebraic equations (IDAE) systems.
 
@@ -48,6 +49,12 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
 
+    Returns
+    -------
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IDAE system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
+
     Examples
     --------
     >>> import jax.numpy as jnp
@@ -57,7 +64,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     >>> xinp = jnp.array([[0.0], [1.0], [2.0], [3.0]])
     >>> params = jnp.array([0.5])
     >>> tpts = jnp.array([0.0, 1.0, 2.0, 3.0])
-    >>> solve_idae(idae_func, y0, xinp, params, tpts)
+    >>> solve_idae(idae_func, y0, xinp, params, tpts).value
     Array([[1.    ],
            [1.25  ],
            [1.875 ],
@@ -71,7 +78,7 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
 class SolveIDAEMethod(metaclass=get_method_meta(solve_idae)):
     @abstractmethod
     def compute(self, func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         pass
 
 class BwdEuler(SolveIDAEMethod):
@@ -80,16 +87,16 @@ class BwdEuler(SolveIDAEMethod):
 
     Arguments
     ---------
-    solver: Optional[optx.AbstractRootFinder]
+    solver: Optional[RootMethod]
         The root finder solver. If None, then use the Newton's method.
     """
-    def __init__(self, solver: Optional[optx.AbstractRootFinder] = None):
+    def __init__(self, solver: Optional[RootMethod] = None):
         if solver is None:
-            solver = optx.Newton(rtol=1e-6, atol=1e-6)
+            solver = root.Newton(max_iter=200, atol=1e-6, rtol=1e-3)
         self.solver = solver
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
@@ -99,17 +106,32 @@ class BwdEuler(SolveIDAEMethod):
             return func((yi - yim1) / dti, yi, xi, params)
 
         def scan_fn(carry, x):
-            yprev = carry
-            xi, dti = x
-            sol = optx.root_find(fn, self.solver, yprev, (yprev, xi, dti, params))
-            yi = sol.value
-            return yi, yi
+            _, success = carry
+
+            def success_fn(carry, x):
+                yprev, success = carry
+                xi, dti = x
+                sol = root(fn, yprev, (yprev, xi, dti, params), method=self.solver)
+                yi = sol.value
+                success = sol.success
+                return yi, success
+
+            def fail_fn(carry, x):
+                yprev, _ = carry
+                return yprev, jnp.full_like(yprev, False, dtype=jnp.bool)
+
+            res = jax.lax.cond(jnp.all(success), success_fn, fail_fn, carry, x)
+            return res, res
 
         dti = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
-        _, y = jax.lax.scan(scan_fn, y0, (xi, dti))  # (nsamples - 1, ny)
+        carry = (y0, jnp.full_like(y0, True, dtype=jnp.bool))
+        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti))  # (nsamples - 1, ny)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
-        return y
+        # (nsamples, ny)
+        success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
+        # TODO: turn off the throw error in Newton, and check the convergence to be put in the Result here
+        return Result(y, success)
 
 class BwdEulerDEER(SolveIDAEMethod):
     """
@@ -122,17 +144,13 @@ class BwdEulerDEER(SolveIDAEMethod):
         If None, it will be initialized as all ``y0``.
     max_iter: int
         The maximum number of DEER iterations to perform.
-    memory_efficient: bool
-        If True, then use the memory efficient algorithm for the DEER iteration.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000,
-                 memory_efficient: bool = True):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
-        self.memory_efficient = memory_efficient
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
@@ -162,23 +180,23 @@ class BwdEulerDEER(SolveIDAEMethod):
 
         xinput = (dt, xinp)
         inv_lin_params = (y0,)
-        yt = deer_mode2_iteration(
-            lin_func=linfunc,
+        result = deer_iteration(
             inv_lin=self.solve_idae_inv_lin,
             func=func2,
+            shifter_func=linfunc,
             p_num=2,
             params=params,
             xinput=xinput,
             inv_lin_params=inv_lin_params,
+            shifter_func_params=None,
             yinit_guess=yinit_guess,
             max_iter=self.max_iter,
-            memory_efficient=self.memory_efficient,
             clip_ytnext=True,
         )
-        return yt
+        return result
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
-                        inv_lin_params: Any) -> jnp.ndarray:
+                           inv_lin_params: Any) -> jnp.ndarray:
         # solving the equation: M0_i @ y_i + M1_i @ y_{i-1} = z_i
         # M: (nsamples, ny, ny)
         # G: (nsamples, ny, ny)

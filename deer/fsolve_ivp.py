@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method
+from deer.utils import get_method_meta, check_method, Result
 
 
 __all__ = ["solve_ivp"]
@@ -13,7 +13,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
               y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
               tpts: jnp.ndarray,
               method: Optional["SolveIVPMethod"] = None,
-              ) -> jnp.ndarray:
+              ) -> Result:
     r"""
     Solve the initial value problem.
     
@@ -46,8 +46,9 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 
     Returns
     -------
-    y: jnp.ndarray
-        The output signal as the solution of the non-linear differential equations ``(nsamples, ny)``.
+    res: Result
+        The ``Result`` object where ``.value`` is the solution of the IVP system at the given time with
+        shape ``(nsamples, ny)`` and ``.success`` is the boolean array indicating the convergence of the solver.
 
     Examples
     --------
@@ -64,7 +65,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
     >>> params = (1.0, 1.0)  # k, m
     >>> tpts = jnp.linspace(0, 10, 100)
     >>>
-    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts)
+    >>> y = solve_ivp(simple_harmonic_oscillator, y0, xinp, params, tpts).value
     >>> # The output y should be an array of shape (nsamples, ny)
     >>> y.shape
     (100, 2)
@@ -82,7 +83,7 @@ def solve_ivp(func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
 class SolveIVPMethod(metaclass=get_method_meta(solve_ivp)):
     @abstractmethod
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray) -> Result:
         pass
 
 class DEER(SolveIVPMethod):
@@ -96,17 +97,13 @@ class DEER(SolveIVPMethod):
         If None, it will be initialized as 0s.
     max_iter: int
         The maximum number of iterations to perform.
-    memory_efficient: bool
-        If True, then use the memory efficient algorithm for the DEER iteration.
     """
-    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000,
-                 memory_efficient: bool = True):
+    def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 10000):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
-        self.memory_efficient = memory_efficient
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
+                y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray) -> Result:
         # set the default initial guess
         yinit_guess = self.yinit_guess
         if yinit_guess is None:
@@ -121,11 +118,10 @@ class DEER(SolveIVPMethod):
 
         # perform the deer iteration
         inv_lin_params = (tpts, y0)
-        yt = deer_iteration(
+        result = deer_iteration(
             inv_lin=self.solve_ivp_inv_lin, p_num=1, func=func2, shifter_func=shifter_func, params=params, xinput=xinp,
-            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter,
-            memory_efficient=self.memory_efficient)
-        return yt
+            inv_lin_params=inv_lin_params, shifter_func_params=(), yinit_guess=yinit_guess, max_iter=self.max_iter)
+        return result
 
     def solve_ivp_inv_lin(self, gmat: List[jnp.ndarray], rhs: jnp.ndarray,
                           inv_lin_params: Tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
