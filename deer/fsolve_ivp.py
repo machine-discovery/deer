@@ -232,11 +232,6 @@ class GeneralODE(SolveIVPMethod):
 class ForwardEuler(GeneralODE):
     """
     Compute the solution of initial value problem with the Forward Euler method.
-    
-    Arguments
-    ---------
-    step_size: float
-        The step size to use for the Euler method. If None, it will use the difference (tpts[1] - tpts[0]) divided by the number of steps.
     """
     def ode_step(
         self,
@@ -255,11 +250,6 @@ class ForwardEuler(GeneralODE):
 class RK3(GeneralODE):
     """
     Compute the solution of initial value problem with the Runge-Kutta 3rd order method.
-
-    Arguments
-    ---------
-    step_size: float
-        The step size to use for the RK3 method. If None, it will use (tpts[i] - tpts[i - 1]).
     """
 
     def ode_step(
@@ -282,11 +272,6 @@ class RK3(GeneralODE):
 class RK4(GeneralODE):
     """
     Compute the solution of initial value problem with the Runge-Kutta 4th order method.
-
-    Arguments
-    ---------
-    step_size: float
-        The step size to use for the RK4 method. If None, it will use (tpts[i] - tpts[i - 1]).
     """
     
     def ode_step(
@@ -313,8 +298,6 @@ class GeneralBackwardODE(GeneralODE):
 
     Arguments
     ---------
-    step_size: float
-        The step size for ODE solver. If None, it will use (tpts[i] - tpts[i - 1]).
     tol: float
         The tolerance for the fixed-point iteration.
     max_iter: int
