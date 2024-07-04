@@ -77,7 +77,11 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
         y, err, tol, iiter, jac0 = carry
         jac = jax.jacfwd(func)(y, params)
         fy = func(y, params)
-        ynext = y - jnp.linalg.solve(jac, fy)
+        jacinvfy = jnp.linalg.solve(jac, fy)
+        # doing lstsq to handle singular matrix
+        jacinvfy = jax.lax.cond(jnp.all(jnp.isfinite(jacinvfy)), lambda : jacinvfy, lambda : jnp.linalg.lstsq(jac, fy)[0])
+        ynext = y - jacinvfy
+        # ynext = y - jnp.linalg.lstsq(jac, fy)[0]
 
         # clip nans and infs
         clip = 1e8
@@ -121,7 +125,7 @@ def newton_iter_jvp(
     func_partial_y = partial(func, yt)
     # grad_func: (ny,)
     _, grad_func = jax.jvp(func_partial_y, (params,), (grad_params,))
-    
+
     grad_y = jnp.linalg.solve(jac, -grad_func)  # (ny,)
     result = Result(yt, is_converged)
     grad_result = Result(grad_y)

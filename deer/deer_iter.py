@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from deer.utils import Result
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11, 12))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -18,6 +18,8 @@ def deer_iteration(
         yinit_guess: jnp.ndarray,  # gradable as 0
         max_iter: int = 100,
         clip_ytnext: bool = False,
+        atol: Optional[float] = None,
+        rtol: Optional[float] = None,
         ) -> jnp.ndarray:
     r"""
     Perform the iteration from the DEER framework on equations with the form
@@ -54,6 +56,14 @@ def deer_iteration(
     yinit_guess: jnp.ndarray or None
         The initial guess of the output signal (nsamples, ny).
         If None, it will be initialized as 0s.
+    max_iter: int
+        The maximum number of iterations to perform.
+    clip_ytnext: bool
+        Whether to clip the output of the next iteration to avoid inf and nans.
+    atol: Optional[float]
+        The absolute tolerance for the convergence. If None, it will be set to 1e-6 for float64 and 1e-4 for float32.
+    rtol: Optional[float]
+        The relative tolerance for the convergence. If None, it will be set to 1e-4 for float64 and 1e-3 for float32.
 
     Returns
     -------
@@ -74,7 +84,9 @@ def deer_iteration(
         shifter_func_params=shifter_func_params,
         yinit_guess=yinit_guess,
         max_iter=max_iter,
-        clip_ytnext=clip_ytnext)
+        clip_ytnext=clip_ytnext,
+        atol=atol,
+        rtol=rtol)
     return Result(yt, success=is_converged)
 
 
@@ -90,6 +102,8 @@ def deer_iteration_helper(
         yinit_guess: jnp.ndarray,  # gradable
         max_iter: int = 100,
         clip_ytnext: bool = False,
+        atol: Optional[float] = None,
+        rtol: Optional[float] = None,
         ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
@@ -97,13 +111,13 @@ def deer_iteration_helper(
 
     dtype = yinit_guess.dtype
     # set the tolerance to be 1e-4 if dtype is float32, else 1e-7 for float64
-    tol = 1e-7 if dtype == jnp.float64 else 1e-4
-    # tol = 1e-6 if dtype == jnp.float64 else 1e-4
+    # tol = 1e-7 if dtype == jnp.float64 else 1e-4
+    atol = (1e-6 if dtype == jnp.float64 else 1e-4) if atol is None else atol
+    rtol = (1e-4 if dtype == jnp.float64 else 1e-3) if rtol is None else rtol
 
-    # def iter_func(err, yt, gt_, iiter):
-    def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \
+    def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \
             -> Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]:
-        err, yt, gt_, iiter = iter_inp
+        err, tol, yt, gt_, iiter = iter_inp
         # gt_ is not used, but it is needed to return at the end of scan iteration
         # yt: (nsamples, ny)
         ytparams = shifter_func(yt, shifter_func_params)
@@ -121,19 +135,22 @@ def deer_iteration_helper(
             # jax.debug.print("{iiter}", iiter=iiter)
             # jax.debug.print("gteival: {gteival}", gteival=jnp.max(jnp.abs(jnp.real(jnp.linalg.eigvals(gts[0])))))
 
-        err = jnp.max(jnp.abs(yt_next - yt))  # checking convergence
-        # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=err)
-        return err, yt_next, gts, iiter + 1
+        # conditions for convergence checking
+        err = jnp.abs(yt_next - yt)
+        tol = atol + rtol * jnp.abs(yt_next)
+        # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=jnp.max(err))
+        return err, tol, yt_next, gts, iiter + 1
 
-    def cond_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) -> bool:
-        err, _, _, iiter = iter_inp
-        return jnp.logical_and(err > tol, iiter < max_iter)
+    def cond_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) -> bool:
+        err, tol, _, _, iiter = iter_inp
+        return jnp.logical_and(jnp.any(err > tol), iiter < max_iter)
 
-    err = jnp.array(1e10, dtype=dtype)  # initial error should be very high
+    tol = jnp.zeros_like(yinit_guess, dtype=dtype)
+    err = tol + 1e10  # initial error should be very high
     gt = jnp.zeros((yinit_guess.shape[0], yinit_guess.shape[-1], yinit_guess.shape[-1]), dtype=dtype)
     gts = [gt] * p_num
     iiter = jnp.array(0, dtype=jnp.int32)
-    err, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, yinit_guess, gts, iiter))
+    err, tol, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, tol, yinit_guess, gts, iiter))
     # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
     is_converged = iiter < max_iter
     return yt, is_converged, gts, func
@@ -147,6 +164,8 @@ def deer_iteration_jvp(
         p_num: int,
         max_iter: int,
         clip_ytnext: bool,
+        atol: Optional[float],
+        rtol: Optional[float],
         # the meaningful arguments
         primals, tangents):
     params, xinput, inv_lin_params, shifter_func_params, yinit_guess = primals
@@ -166,7 +185,8 @@ def deer_iteration_jvp(
         yinit_guess=yinit_guess,
         max_iter=max_iter,
         clip_ytnext=clip_ytnext,
-    )
+        atol=atol,
+        rtol=rtol)
 
     # func2: (nsamples, ny) + (nsamples, ny) + any -> (nsamples, ny)
     func2 = jax.vmap(func, in_axes=(0, 0, None))  # vmap for y & x
