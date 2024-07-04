@@ -215,8 +215,8 @@ class BwdEulerDEER(SolveIDAEMethod):
         y0, = inv_lin_params  # tpts: (nsamples,), y0: (ny,)
 
         # using index [1:] because we don't need to compute y_0 again (it's already available from y0)
-        M0inv = jnp.linalg.inv(M0[1:])
-        M0invM1 = -jnp.einsum("...ij,...jk->...ik", M0inv, M1[1:])
-        M0invz = jnp.einsum("...ij,...j->...i", M0inv, z[1:])
+        M01 = M0[1:]
+        M0invM1 = -jax.vmap(jnp.linalg.solve)(M01, M1[1:])
+        M0invz = jax.vmap(jnp.linalg.solve)(M01, z[1:])
         y = matmul_recursive(M0invM1, M0invz, y0)  # (nsamples, ny)
         return y
