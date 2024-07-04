@@ -1,4 +1,4 @@
-from typing import Callable, Union
+from typing import Callable, Union, Any, Tuple
 import jax
 import jax.numpy as jnp
 from collections import OrderedDict
@@ -84,3 +84,41 @@ def check_method(method, func_obj: Callable):
         msg = f"`method` must be an instance of `{func_obj.__name__}.*` method, got {type(method)}. "
         msg += f"Available methods are: {func_obj.methods}"
         raise ValueError(msg)
+
+def while_loop_scan(cond_func: Callable[[Any], jnp.ndarray], iter_func: Callable[[Any], Any], carry: Any,
+                    max_iter: int) \
+        -> Tuple[Any, Any]:
+    """
+    Using jax.lax.scan to do while loop, to make it differentiable.
+
+    Arguments
+    ---------
+    cond_func: Callable[[Any], jnp.ndarray]
+        The function to check the condition of the while loop.
+        It should return a boolean array.
+    iter_func: Callable[[Any], Any]
+        The function to iterate the while loop.
+        It should return the next carry.
+    carry: Any
+        The initial carry.
+    max_iter: int
+        The maximum number of iterations.
+
+    Returns
+    -------
+    Tuple[Any, Any]
+        A tuple of `(carry, stacked_carry)` where `carry` is the final carry after the while loop,
+        and `stacked_carry` is the stacked carry during the while loop, not including the first carry.
+    """
+    def pos_fn(carry):
+        next_carry = iter_func(carry)
+        return next_carry, next_carry
+
+    def neg_fn(carry):
+        return carry, carry
+
+    def fn(carry, _):
+        return jax.lax.cond(cond_func(carry), pos_fn, neg_fn, carry)
+
+    carry, stacked_carry = jax.lax.scan(fn, carry, xs=None, length=max_iter)
+    return carry, stacked_carry
