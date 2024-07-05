@@ -99,6 +99,9 @@ def test_solve_ivp(method):
 @pytest.mark.parametrize("method", [
     solve_idae.BwdEulerDEER(),
     solve_idae.BwdEuler(),
+    # method that returns the full iteration history
+    solve_idae.BwdEulerDEER(max_iter=20, return_full=True),
+    solve_idae.BwdEuler(root.Newton(max_iter=20, return_full=True)),
     ])
 def test_solve_idae(method):
     dtype = jnp.float64
@@ -115,13 +118,21 @@ def test_solve_idae(method):
     params = g
     npts = 10000
     tpts = jnp.linspace(0, 2.0, npts, dtype=dtype)  # (ntpts,)
-    res = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)  # (ntpts, ny)
-    vrt = res.value
+    # (ntpts, ny) or (niter, ntpts, ny)
+    res = solve_idae(dae_pendulum, vr0, tpts[..., None], params, tpts, method=method)
+    return_full = res.value.ndim == 3
 
     # check if res.success has the same shape as yt
-    assert res.success.shape == vrt.shape
+    assert res.success.shape == res.value.shape
     # check if it all success
-    assert jnp.all(res.success)
+    if not return_full:
+        vrt = res.value  # (ntpts, ny)
+        assert jnp.all(res.success)
+    else:
+        vrt = res.value[-1]  # (ntpts, ny)
+        # only check the last iteration's success
+        assert jnp.all(res.success[-1])
+        assert res.value.shape == (20, npts, 5)
 
     # evaluate with numpy, but recast the problem into ODE because numpy does not have DAE solver
     def func_np(t: np.ndarray, vr: np.ndarray) -> np.ndarray:
@@ -193,6 +204,7 @@ def test_solve_idae_derivs(method):
 
 @pytest.mark.parametrize("method", [
     root.Newton(atol=1e-8, rtol=1e-4),
+    root.Newton(atol=1e-8, rtol=1e-4, max_iter=20, return_full=True),
     ])
 def test_root(method):
     def func(y, params):
@@ -209,20 +221,26 @@ def test_root(method):
     params = (w1, b1, w2)
     y0 = jnp.zeros(nh)
     res = root(func, y0, params, method=method)
-    y = res.value
+    return_full = res.value.ndim == 2
 
     # check the success
-    assert res.success.shape == y.shape
-    assert jnp.all(res.success)
+    assert res.success.shape == res.value.shape
+    if not return_full:
+        assert jnp.all(res.success)
+    else:
+        # if return_full iterations, then only check the last one
+        assert jnp.all(res.success[-1])
 
     # check the outputs
+    y = res.value if not return_full else res.value[-1]
     funcy = func(y, params)
     zeros = jnp.zeros(nh)
     assert jnp.allclose(funcy, zeros)
 
     def get_loss(y0, params):
         yt = root(func, y0, params, method=method).value
-        return yt
+        w = jax.random.normal(key, yt.shape)
+        return (w * yt).sum()
 
     jax.test_util.check_grads(
         get_loss, (y0, params), order=1, modes=['rev', 'fwd'],

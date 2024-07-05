@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Optional
 import jax
 import jax.numpy as jnp
 import optimistix as optx
-from deer.deer_iter import deer_iteration
+from deer.deer_iter import deer_iteration, deer_iteration_full
 from deer.maths import matmul_recursive
 from deer.utils import get_method_meta, check_method, Result
 from deer.froot import root, RootMethod
@@ -94,6 +94,7 @@ class BwdEuler(SolveIDAEMethod):
         if solver is None:
             solver = root.Newton(max_iter=200, atol=1e-6, rtol=1e-3)
         self.solver = solver
+        self.num_iter_returned = solver.num_iter_returned
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
@@ -101,6 +102,7 @@ class BwdEuler(SolveIDAEMethod):
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
         # returns: (nsamples, ny), including the initial states
+        return_full = self.num_iter_returned > 0
         def fn(yi, args):
             yim1, xi, dti, params = args
             return func((yi - yim1) / dti, yi, xi, params)
@@ -109,8 +111,10 @@ class BwdEuler(SolveIDAEMethod):
             _, success = carry
 
             def success_fn(carry, x):
-                yprev, success = carry
+                yprev, _ = carry
                 xi, dti = x
+                if return_full:
+                    yprev = yprev[-1]
                 sol = root(fn, yprev, (yprev, xi, dti, params), method=self.solver)
                 yi = sol.value
                 success = sol.success
@@ -120,17 +124,29 @@ class BwdEuler(SolveIDAEMethod):
                 yprev, _ = carry
                 return yprev, jnp.full_like(yprev, False, dtype=jnp.bool)
 
-            res = jax.lax.cond(jnp.all(success), success_fn, fail_fn, carry, x)
+            # success: (num_iter, ny) or (ny,)
+            if return_full:
+                cond = jnp.all(success[-1])
+            else:
+                cond = jnp.all(success)
+            res = jax.lax.cond(cond, success_fn, fail_fn, carry, x)
             return res, res
 
         dti = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         xi = jax.tree_util.tree_map(lambda x: x[1:], xinp)  # (nsamples - 1, *nx)
+        if return_full:
+            y0 = jnp.tile(y0, (self.num_iter_returned, 1))  # (num_iter, ny)
         carry = (y0, jnp.full_like(y0, True, dtype=jnp.bool))
-        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti))  # (nsamples - 1, ny)
-        y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny)
-        # (nsamples, ny)
+        # (nsamples - 1, ny) or (nsamples - 1, num_iter, ny)
+        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti))
+        y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny) or (nsamples, num_iter, ny)
+        # (nsamples, ny) or (nsamples, num_iter, ny)
         success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
-        # TODO: turn off the throw error in Newton, and check the convergence to be put in the Result here
+
+        # if the method returns multiple iterations, then move the axis to be consistent
+        if return_full:
+            y = jnp.moveaxis(y, 0, 1)  # (num_iter, nsamples, ny)
+            success = jnp.moveaxis(success, 0, 1)  # (num_iter, nsamples, ny)
         return Result(y, success)
 
 class BwdEulerDEER(SolveIDAEMethod):
@@ -148,20 +164,25 @@ class BwdEulerDEER(SolveIDAEMethod):
         The absolute tolerance of the DEER iteration convergence.
     rtol: Optional[float]
         The relative tolerance of the DEER iteration convergence.
+    return_full: bool
+        If True, return the full result of the DEER iteration. Otherwise, return the
+        final result only.
     """
     def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200, atol: Optional[float] = None,
-                 rtol: Optional[float] = None):
+                 rtol: Optional[float] = None, return_full: bool = False):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
         self.atol = atol
         self.rtol = rtol
+        self.return_full = return_full
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
-        # returns: (nsamples, ny), including the initial states
+        # returns: (nsamples, ny), including the initial states if not self.return_full
+        # else returns (max_iter, nsamples, ny) for the full result
 
         # set the default initial guess
         yinit_guess = self.yinit_guess
@@ -185,23 +206,22 @@ class BwdEulerDEER(SolveIDAEMethod):
         dt_partial = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         dt = jnp.concatenate((dt_partial[:1], dt_partial), axis=0)  # (nsamples,)
 
-        xinput = (dt, xinp)
-        inv_lin_params = (y0,)
-        result = deer_iteration(
-            inv_lin=self.solve_idae_inv_lin,
-            func=func2,
-            shifter_func=linfunc,
-            p_num=2,
-            params=params,
-            xinput=xinput,
-            inv_lin_params=inv_lin_params,
-            shifter_func_params=None,
-            yinit_guess=yinit_guess,
-            max_iter=self.max_iter,
-            clip_ytnext=True,
-            atol=self.atol,
-            rtol=self.rtol,
-        )
+        kwargs = {
+            "inv_lin": self.solve_idae_inv_lin,
+            "func": func2,
+            "shifter_func": linfunc,
+            "p_num": 2,
+            "params": params,
+            "xinput": (dt, xinp),
+            "inv_lin_params": (y0,),
+            "shifter_func_params": None,
+            "yinit_guess": yinit_guess,
+            "max_iter": self.max_iter,
+            "clip_ytnext": True,
+            "atol": self.atol,
+            "rtol": self.rtol,
+        }
+        result = deer_iteration_full(**kwargs) if self.return_full else deer_iteration(**kwargs)
         return result
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
