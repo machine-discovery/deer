@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
 from deer.maths import matmul_recursive
-from deer.utils import get_method_meta, check_method, Result
+from deer.utils import get_method_meta, check_method, Result, while_loop_scan
 
 
 __all__ = ["solve_ivp"]
@@ -185,19 +185,27 @@ class GeneralODE(SolveIVPMethod):
                 y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
         
         # Define the main function to cover all time intervals
-        def scan_step(yi, i):
-            xi = xinp[i-1]
-            dx = xinp[i] - xinp[i-1]
-            dt = tpts[i] - tpts[i-1]
+        def scan_step(carry, i):
+            _, success = carry
+            def success_fn(carry, i):
+                yi, _ = carry
+                xi = xinp[i-1]
+                dx = xinp[i] - xinp[i-1]
+                dt = tpts[i] - tpts[i-1]
+                yn, success = self.ode_step(func, yi, xi, dt, dx, params)
+                return yn, success
+            
+            def failure_fn(carry, i):
+                yi, _ = carry
+                return yi, False
+            
+            res = jax.lax.cond(success, success_fn, failure_fn, carry, i)
+            return res, res
 
-            yn = self.ode_step(func, yi, xi, dt, dx, params)
-            return yn, yn
-
-        _, y = jax.lax.scan(scan_step, y0, jnp.arange(1, len(tpts)))
-        
+        _, (y, success) = jax.lax.scan(scan_step, (y0, True), jnp.arange(1, len(tpts)))
         y = jnp.concatenate([y0[None, :], y], axis=0)
-
-        return Result(y, True)
+        success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
+        return Result(y, success[:, None])
 
 # Note that `self.ode_step` should be adjusted to properly work with jax if it isn't already.
 
@@ -252,7 +260,7 @@ class ForwardEuler(GeneralODE):
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         k = func(yi, xi, params)
         yi_new = yi + dt * k
-        return yi_new
+        return yi_new, True
 
 
 class RK3(GeneralODE):
@@ -274,7 +282,7 @@ class RK3(GeneralODE):
         k3 = func(yi + 0.25 * dt * (k1 + k2), xi + 0.5 * dx, params)
 
         yi = yi + (dt / 6.0) * (k1 + k2 + 4 * k3)
-        return yi
+        return yi, True
 
 
 class RK4(GeneralODE):
@@ -297,7 +305,7 @@ class RK4(GeneralODE):
         k4 = func(yi + dt * k3, xi + dx, params)
 
         yi = yi + (dt / 6.0) * (k1 + 2*k2 + 2*k3 + k4)
-        return yi
+        return yi, True
 
 
 class GeneralBackwardODE(GeneralODE):
@@ -315,48 +323,6 @@ class GeneralBackwardODE(GeneralODE):
         self.tol = tol
         self.max_iter = max_iter
 
-
-class BackwardEuler(GeneralBackwardODE):
-    """
-    Compute the solution of initial value problem with the Backward Euler method.
-    """
-    
-    def ode_step(
-        self,
-        func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
-        yi: jnp.ndarray,
-        xi: jnp.ndarray,
-        dt: jnp.ndarray,
-        dx: jnp.ndarray,
-        params: Any
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        
-        def cond(val):
-            y_new, y_new_next, i = val
-            return jnp.logical_and(i < self.max_iter, jnp.linalg.norm(y_new_next - y_new) >= self.tol)
-        
-        def body(val):
-            y_new, _, i = val
-            y_new_next = yi + dt * func(y_new, xi, params)
-            return y_new_next, y_new_next, i + 1
-        
-        # Initial values for y_new and y_new_next
-        y_new = yi
-        y_new_next = yi + dt * func(y_new, xi, params)
-        val = (y_new, y_new_next, 0)
-        
-        # Use jax.lax.while_loop to iterate while the condition is met
-        y_new, _, _ = jax.lax.while_loop(cond, body, val)
-        
-        return y_new
-
-
-
-class TrapezoidalMethod(GeneralBackwardODE):
-    """
-    Compute the solution of initial value problem with the Trapezoidal method.
-    """
-    
     def ode_step(
         self,
         func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
@@ -367,20 +333,66 @@ class TrapezoidalMethod(GeneralBackwardODE):
         params: Any
     ) -> jnp.ndarray:
         def body_fn(state):
-            y_new, _, i = state
-            print(_, i)
-            y_new_next = yi + (dt / 2.0) * (func(yi, xi, params) + func(y_new, xi + dx, params))
-            return y_new_next, jnp.linalg.norm(y_new_next - y_new), i + 1
-        
+            y_new, _ = state
+            y_new_next = self.backward_iteration_step(func, y_new, yi, xi, dt, dx, params)
+            return y_new_next, jnp.linalg.norm(y_new_next - y_new)
+
         def cond_fn(state):
-            _, diff_norm, i = state
-            print(i, diff_norm >= self.tol)
-            return jnp.logical_and(i < self.max_iter, diff_norm >= self.tol)
-        
+            _, diff_norm = state
+            return diff_norm >= self.tol
+
         # Initial guess for fixed-point iteration (use forward Euler as an initial guess)
         y_new = yi + dt * func(yi, xi, params)
-        
-        # Run the fixed-point iteration loop using lax.while_loop
-        y_new, _, _ = jax.lax.while_loop(cond_fn, body_fn, (y_new, jnp.inf, 0))
 
-        return y_new
+        # Run the fixed-point iteration loop using lax.while_loop
+        state, _ = while_loop_scan(cond_fn, body_fn, (y_new, jnp.inf), self.max_iter)
+        y_new, diff_norm = state
+        return y_new, diff_norm < self.tol
+
+    # @abstractmethod
+    def backward_iteration_step(self,
+                                func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+                                y_new: jnp.ndarray,
+                                yi: jnp.ndarray,
+                                xi: jnp.ndarray,
+                                dt: jnp.ndarray,
+                                dx: jnp.ndarray,
+                                params: Any) -> jnp.ndarray:
+        """
+        The body function for the fixed-point iteration. Return the next value of yi.
+        
+        Arguments:
+        func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray]
+            The function defining the differential equation dy/dt = f(y, x, params).
+        y_new: jnp.ndarray
+            The current value of yi.
+        yi: jnp.ndarray
+            The initial value of yi.
+        xi: jnp.ndarray
+            The input signal at the current time step.
+        dt: jnp.ndarray
+            The time step size.
+        dx: jnp.ndarray
+            The change in input signal.
+        params: Any
+            The parameters of the function.
+        """
+        pass
+
+
+class BackwardEuler(GeneralBackwardODE):
+    """
+    Compute the solution of initial value problem with the Backward Euler method.
+    """
+    
+    def backward_iteration_step(self, func, y_new, yi, xi, dt, dx, params) -> jnp.ndarray:
+        return yi + dt * func(y_new, xi, params)
+
+
+class TrapezoidalMethod(GeneralBackwardODE):
+    """
+    Compute the solution of initial value problem with the Trapezoidal method.
+    """
+    
+    def backward_iteration_step(self, func, y_new, yi, xi, dt, dx, params) -> jnp.ndarray:
+        return yi + (dt / 2.0) * (func(yi, xi, params) + func(y_new, xi + dx, params))

@@ -429,16 +429,22 @@ def test_ODEs(method, atol: float):
     y0 = jnp.array([1.0, 0.0, -1.0])
     params = -2
     tpts = jnp.linspace(0, 0.5, 1000)
-    xinp = jnp.sin(tpts * 2 * jnp.pi)
-
-    # Compute reference solution using DEER method
-    yt_deer = solve_ivp(sample_func, y0, xinp, params, tpts, method=solve_ivp.DEER())
+    xinp = jnp.sin(tpts * 2 * jnp.pi) + 1e-3
 
     # Compute solution using the parameterized method
     yt_method = solve_ivp(sample_func, y0, xinp, params, tpts, method=method)
 
+    # Compute reference solution using DEER method
+    yt_deer = solve_ivp(sample_func, y0, xinp, params, tpts, method=solve_ivp.DEER())
+
     # Compare results
     assert jnp.allclose(yt_deer.value, yt_method.value, atol=atol)
+
+    # Check the gradients
+    def solve_ivp_wrapper(y0):
+        return solve_ivp(sample_func, y0, xinp, params, tpts, method=method).value
+    
+    jax.test_util.check_grads(solve_ivp_wrapper, (y0,), order=1, modes=['fwd', 'rev'])
 
 if __name__ == "__main__":
     test_solve_idae()
