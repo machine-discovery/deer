@@ -86,7 +86,7 @@ def check_method(method, func_obj: Callable):
         raise ValueError(msg)
 
 def while_loop_scan(cond_func: Callable[[Any], jnp.ndarray], iter_func: Callable[[Any], Any], carry: Any,
-                    max_iter: int) \
+                    max_iter: int, unroll: int = 1) \
         -> Tuple[Any, Any]:
     """
     Using jax.lax.scan to do while loop, to make it differentiable.
@@ -120,5 +120,5 @@ def while_loop_scan(cond_func: Callable[[Any], jnp.ndarray], iter_func: Callable
     def fn(carry, _):
         return jax.lax.cond(cond_func(carry), pos_fn, neg_fn, carry)
 
-    carry, stacked_carry = jax.lax.scan(fn, carry, xs=None, length=max_iter)
+    carry, stacked_carry = jax.lax.scan(fn, carry, xs=None, length=max_iter, unroll=unroll)
     return carry, stacked_carry

@@ -129,8 +129,8 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
 
         err = jnp.abs(ynext - y)
         tol = atol + rtol * jnp.abs(ynext)
-        jax.debug.print("froot iiter: {iiter}, err: {err}, fy: {fy}", iiter=iiter, err=jnp.max(err),
-                        fy=jnp.max(jnp.abs(func(ynext, params))))
+        # jax.debug.print("froot iiter: {iiter}, err: {err}, fy: {fy}", iiter=iiter, err=jnp.max(err),
+        #                 fy=jnp.max(jnp.abs(func(ynext, params))))
         return ynext, err, tol, iiter + 1, jac
 
     def cond_func(carry):
@@ -143,7 +143,7 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
     jac0 = jnp.zeros((y0.size, y0.size))
     # yiter: (max_iter, *ny), erriter: (max_iter, *ny), toliter: (max_iter, *ny)
     (y, err, tol, iiter, jac), (yiter, erriter, toliter, _, _) = while_loop_scan(
-        cond_func, iter_func, (y0, err, tol, iiter, jac0), max_iter=max_iter)
+        cond_func, iter_func, (y0, err, tol, iiter, jac0), max_iter=max_iter, unroll=128)
     is_converged = jnp.all(err <= tol)  # ()
     # (max_iter, *1)
     is_converged_iter = jnp.all(erriter <= toliter, axis=tuple(range(1, erriter.ndim)), keepdims=True)
