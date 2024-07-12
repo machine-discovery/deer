@@ -181,31 +181,43 @@ class GeneralODE(SolveIVPMethod):
     Compute the solution of initial value problem with the ODE methods.
     """
 
-    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
+    def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray], 
                 y0: jnp.ndarray, xinp: jnp.ndarray, params: Any, tpts: jnp.ndarray):
         
+        # Precompute dx and dt
+        dx = jnp.diff(xinp)
+        dt = jnp.diff(tpts)
+        
         # Define the main function to cover all time intervals
-        def scan_step(carry, i):
-            _, success = carry
-            def success_fn(carry, i):
+        def scan_step(carry, inputs):
+            yi, success = carry
+            xi, dx_i, dt_i = inputs
+            def success_fn(carry):
                 yi, _ = carry
-                xi = xinp[i-1]
-                dx = xinp[i] - xinp[i-1]
-                dt = tpts[i] - tpts[i-1]
-                yn, success = self.ode_step(func, yi, xi, dt, dx, params)
+                yn, success = self.ode_step(func, yi, xi, dt_i, dx_i, params)
                 return yn, success
             
-            def failure_fn(carry, i):
+            def failure_fn(carry):
                 yi, _ = carry
                 return yi, False
             
-            res = jax.lax.cond(success, success_fn, failure_fn, carry, i)
+            res = jax.lax.cond(success, success_fn, failure_fn, carry)
             return res, res
 
-        _, (y, success) = jax.lax.scan(scan_step, (y0, True), jnp.arange(1, len(tpts)))
+        # Initial carry
+        initial_carry = (y0, True)
+        
+        # Pack parameters for scan
+        scan_inputs = (xinp[:-1], dx, dt)
+        
+        # Use jax.lax.scan to iterate over time points
+        _, (y, success) = jax.lax.scan(scan_step, initial_carry, scan_inputs)
+        
         y = jnp.concatenate([y0[None, :], y], axis=0)
         success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
+        
         return Result(y, success[:, None])
+
 
 # Note that `self.ode_step` should be adjusted to properly work with jax if it isn't already.
 
