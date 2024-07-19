@@ -138,7 +138,7 @@ class BwdEuler(SolveIDAEMethod):
             y0 = jnp.tile(y0, (self.num_iter_returned, 1))  # (num_iter, ny)
         carry = (y0, jnp.full_like(y0, True, dtype=jnp.bool))
         # (nsamples - 1, ny) or (nsamples - 1, num_iter, ny)
-        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti), unroll=128)
+        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti), unroll=1)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny) or (nsamples, num_iter, ny)
         # (nsamples, ny) or (nsamples, num_iter, ny)
         success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
