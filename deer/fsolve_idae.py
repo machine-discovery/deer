@@ -14,7 +14,10 @@ __all__ = ["solve_idae"]
 def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                y0: jnp.ndarray, xinp: Any, params: Any,
                tpts: jnp.ndarray,
-               method: Optional["SolveIDAEMethod"] = None,
+               method: Optional["SolveIDAEMethod"] = None, *,
+               # teacher forcing inputs
+               tforce_inp: Optional[jnp.ndarray] = None,
+               tforce_mask: Optional[jnp.ndarray] = None,
                ) -> Result:
     r"""
     Solve the implicit differential algebraic equations (IDAE) systems.
@@ -49,6 +52,17 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
 
+    Keyword arguments
+    -----------------
+    tforce_inp: Optional[jnp.ndarray]
+        The teacher forcing input signal. The signal will be used as the condition at the given time to determine the
+        states at the next time. If None, then do not use teacher forcing. This should have the same shape and datatype
+        as ``yinit_guess``
+    tforce_mask: Optional[jnp.ndarray]
+        The teacher forcing mask signal to indicate which signal is going to be used as the teacher forcing signal.
+        If ``None``, then use all the signals as the teacher forcing signal. This should have the same shape as
+        ``tforce_inp`` and should be a boolean array.
+
     Returns
     -------
     res: Result
@@ -73,12 +87,15 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     if method is None:
         method = BwdEulerDEER()
     check_method(method, solve_idae)
-    return method.compute(func, y0, xinp, params, tpts)
+    return method.compute(func, y0, xinp, params, tpts, tforce_inp=tforce_inp, tforce_mask=tforce_mask)
 
 class SolveIDAEMethod(metaclass=get_method_meta(solve_idae)):
     @abstractmethod
     def compute(self, func: Callable[[jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray, *,
+                # teacher forcing inputs
+                tforce_inp: Optional[jnp.ndarray] = None,
+                tforce_mask: Optional[jnp.ndarray] = None) -> Result:
         pass
 
 class BwdEuler(SolveIDAEMethod):
@@ -97,7 +114,10 @@ class BwdEuler(SolveIDAEMethod):
         self.num_iter_returned = solver.num_iter_returned
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray, *,
+                # teacher forcing inputs
+                tforce_inp: Optional[jnp.ndarray] = None,
+                tforce_mask: Optional[jnp.ndarray] = None) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
@@ -111,10 +131,15 @@ class BwdEuler(SolveIDAEMethod):
             _, success = carry
 
             def success_fn(carry, x):
+                # yprev: (num_iter, ny) if return_full else (ny,)
                 yprev, _ = carry
-                xi, dti = x
+                xi, dti, tforce_inp, tforce_mask = x
                 if return_full:
                     yprev = yprev[-1]
+                # yprev: (ny,)
+                # change yprev with the teacher forcing input
+                if tforce_inp is not None:
+                    yprev = jnp.where(tforce_mask, tforce_inp, yprev)
                 sol = root(fn, yprev, (yprev, xi, dti, params), method=self.solver)
                 yi = sol.value
                 success = sol.success
@@ -124,7 +149,7 @@ class BwdEuler(SolveIDAEMethod):
                 yprev, _ = carry
                 return yprev, jnp.full_like(yprev, False, dtype=jnp.bool)
 
-            # success: (num_iter, ny) or (ny,)
+            # success: (num_iter, ny) if return_full else (ny,)
             if return_full:
                 cond = jnp.all(success[-1])
             else:
@@ -138,7 +163,7 @@ class BwdEuler(SolveIDAEMethod):
             y0 = jnp.tile(y0, (self.num_iter_returned, 1))  # (num_iter, ny)
         carry = (y0, jnp.full_like(y0, True, dtype=jnp.bool))
         # (nsamples - 1, ny) or (nsamples - 1, num_iter, ny)
-        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti), unroll=1)
+        _, (y, success) = jax.lax.scan(scan_fn, carry, (xi, dti, tforce_inp, tforce_mask), unroll=1)
         y = jnp.concatenate((y0[None], y), axis=0)  # (nsamples, ny) or (nsamples, num_iter, ny)
         # (nsamples, ny) or (nsamples, num_iter, ny)
         success = jnp.concatenate((jnp.full_like(success[:1], True, dtype=jnp.bool), success), axis=0)
@@ -177,7 +202,10 @@ class BwdEulerDEER(SolveIDAEMethod):
         self.return_full = return_full
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
-                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
+                y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray, *,
+                # teacher forcing inputs
+                tforce_inp: Optional[jnp.ndarray] = None,
+                tforce_mask: Optional[jnp.ndarray] = None) -> Result:
         # y0: (ny,) the initial states (it's not checked for correctness)
         # xinp: pytree, each has `(nsamples, *nx)`
         # tpts: (nsamples,) the time points
@@ -189,6 +217,17 @@ class BwdEulerDEER(SolveIDAEMethod):
         if yinit_guess is None:
             yinit_guess = jnp.zeros((tpts.shape[0], y0.shape[-1]), dtype=tpts.dtype) + y0
 
+        # check the shape of teacher forcing, if specified
+        if tforce_inp is not None:
+            tforce_mask = tforce_mask or jnp.full_like(tforce_inp, True, dtype=jnp.bool)
+            assert tforce_inp.shape == yinit_guess.shape, \
+                "tforce_inp and yinit_guess should have the same shape"
+            assert tforce_mask.shape == yinit_guess.shape, \
+                "tforce_mask and yinit_guess should have the same shape"
+        else:
+            tforce_inp = None
+            tforce_mask = None
+
         def func2(yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
             # yshifts: [2] + (ny,)
             # x is dt
@@ -196,10 +235,18 @@ class BwdEulerDEER(SolveIDAEMethod):
             dt, xinp = x
             return func((y - ym1) / dt, y, xinp, params)
 
-        def linfunc(y: jnp.ndarray, lin_params: Any) -> List[jnp.ndarray]:
+        def shifter_func(y: jnp.ndarray, shifter_params: Any) -> List[jnp.ndarray]:
             # y: (nsamples, ny)
+            # shifter_params: (tforce_inp, tforce_mask)
+            # tforce_inp: (nsamples, ny) or None, tforce_mask: (nsamples, ny) or None
+            tforce_inp, tforce_mask = shifter_params
             # we're using backward euler's method, so we need to shift the values by one
             ym1 = jnp.concatenate((y[:1], y[:-1]), axis=0)  # (nsamples, ny)
+
+            # change some values of ym1 with teacher forcing
+            if tforce_inp is not None:
+                ym1 = jnp.where(tforce_mask, tforce_inp, ym1)
+
             return [y, ym1]
 
         # dt[i] = t[i] - t[i - 1]
@@ -207,14 +254,14 @@ class BwdEulerDEER(SolveIDAEMethod):
         dt = jnp.concatenate((dt_partial[:1], dt_partial), axis=0)  # (nsamples,)
 
         kwargs = {
-            "inv_lin": self.solve_idae_inv_lin,
+            "inv_lin": BwdEulerDEER.solve_idae_inv_lin,
             "func": func2,
-            "shifter_func": linfunc,
+            "shifter_func": shifter_func,
             "p_num": 2,
             "params": params,
             "xinput": (dt, xinp),
-            "inv_lin_params": (y0,),
-            "shifter_func_params": None,
+            "inv_lin_params": (y0, tforce_inp, tforce_mask),
+            "shifter_func_params": (tforce_inp, tforce_mask),
             "yinit_guess": yinit_guess,
             "max_iter": self.max_iter,
             "clip_ytnext": True,
@@ -224,7 +271,8 @@ class BwdEulerDEER(SolveIDAEMethod):
         result = deer_iteration_full(**kwargs) if self.return_full else deer_iteration(**kwargs)
         return result
 
-    def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
+    @staticmethod  # staticmethod to force it to be a pure function
+    def solve_idae_inv_lin(jacs: List[jnp.ndarray], z: jnp.ndarray,
                            inv_lin_params: Any) -> jnp.ndarray:
         # solving the equation: M0_i @ y_i + M1_i @ y_{i-1} = z_i
         # M: (nsamples, ny, ny)
@@ -232,11 +280,20 @@ class BwdEulerDEER(SolveIDAEMethod):
         # rhs: (nsamples, ny)
         # inv_lin_params: (y0,) where tpts: (nsamples,), y0: (ny,)
         M0, M1 = jacs
-        y0, = inv_lin_params  # tpts: (nsamples,), y0: (ny,)
+        # y0: (ny,), tforce_inp: (nsamples, ny), tforce_mask: (nsamples, ny)
+        y0, tforce_inp, tforce_mask = inv_lin_params
 
         # using index [1:] because we don't need to compute y_0 again (it's already available from y0)
         M01 = M0[1:]
-        M0invM1 = -jax.vmap(jnp.linalg.solve)(M01, M1[1:])
-        M0invz = jax.vmap(jnp.linalg.solve)(M01, z[1:])
+        M11 = M1[1:]  # (nsamples - 1, ny, ny)
+        z1 = z[1:]
+
+        # zeroing out some columns of M11 with teacher forcing
+        if tforce_inp is not None:
+            tforce_mask = tforce_mask[:-1]  # (nsamples - 1, ny)
+            M11 = jnp.where(tforce_mask[..., None, :], 0.0, M11)
+
+        M0invM1 = -jax.vmap(jnp.linalg.solve)(M01, M11)
+        M0invz = jax.vmap(jnp.linalg.solve)(M01, z1)
         y = matmul_recursive(M0invM1, M0invz, y0)  # (nsamples, ny)
         return y
