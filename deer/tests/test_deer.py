@@ -1,4 +1,4 @@
-from typing import Any, Tuple
+from typing import Any, Tuple, Callable
 import pytest
 import itertools
 import functools
@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import solve_ivp as solve_ivp_scipy
 from deer.maths import matmul_recursive
-from deer import solve_ivp, solve_idae, seq1d, root
+from deer import solve_ivp, solve_idae, seq1d, root, solve_sde
 
 
 jax.config.update('jax_platform_name', 'cpu')
@@ -322,6 +322,117 @@ def test_rnn(jit: bool, difficult: bool, method):
 
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
+
+def eulermaruyama(ffunc: Callable, gfunc: Callable, y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
+                  tpts: jnp.ndarray, *, key: jax.random.PRNGKey) -> jnp.ndarray:
+    # y0: (ny,)
+    # x: (ntpts, nx)
+    # tpts: (ntpts,)
+    # ffunc.out: (ny,)
+    # gfunc.out: (ny,)
+    # params: Any
+    # key: jax.random.PRNGKey
+
+    # EulerMaruyama: y[i] = y[i-1] + f(y[i-1], x[i-1]) * dt + g(y[i-1], x[i-1]) * dW
+    ny = y0.shape[-1]
+    ntpts = tpts.shape[0]
+    all_noise = jax.random.normal(key, shape=(ntpts - 1, ny))  # (ntpts - 1, ny)
+    dt = tpts[1:] - tpts[:-1]  # (ntpts - 1,)
+    dt = dt[..., None]  # (ntpts - 1, 1)
+    brownian = all_noise * jnp.sqrt(dt)  # (ntpts - 1, ny)
+
+    y = y0  # (ny,)
+    yall_list = [y0]
+    for i in range(1, ntpts):
+        x = xinp[i - 1]  # (nx,)
+        ft = ffunc(y, x, params)  # (ny,)
+        gt = gfunc(y, x, params)  # (ny,)
+        y = y + ft * dt[i - 1] + gt * brownian[i - 1]  # (ny,)
+        yall_list.append(y)
+
+    # yall: (ntpts, ny)
+    yall = jnp.stack(yall_list, axis=0)
+    return yall
+
+@pytest.mark.parametrize("method_truemethod", [
+    (solve_sde.EulerMaruyama(), eulermaruyama),
+    (solve_sde.EulerMaruyamaDEER(), eulermaruyama),
+    ])
+def test_solve_sde(method_truemethod):
+    method, true_method = method_truemethod
+    key = jax.random.PRNGKey(0)
+
+    def drift_func(y: jnp.ndarray, x: jnp.ndarray, A: jnp.ndarray) -> jnp.ndarray:
+        # y: (ny,), x: (ny,), A: (ny, ny), returns: (ny,)
+        return -A @ (y ** 3 + x ** 2)
+
+    def diffusion_func(y: jnp.ndarray, x: jnp.ndarray, A: jnp.ndarray) -> jnp.ndarray:
+        # y: (ny,), x: (ny,), A: (ny, ny), returns: (ny,)
+        return 10 * (A @ y) ** 2 + x ** 2
+
+    nsamples = 100
+    ny = 2
+    key, *subkey = jax.random.split(key, 5)
+    y0 = jax.random.normal(subkey[0], shape=(ny,))
+    param = jax.random.normal(subkey[1], shape=(ny, ny))
+    tpts = jnp.linspace(0, 1.0, nsamples)
+    xinp = tpts + 1
+    res = solve_sde(drift_func, diffusion_func, y0, xinp, param, tpts, method=method, key=subkey[3])
+    assert res.success.shape == res.value.shape
+    assert jnp.all(res.success)
+    true_value = true_method(drift_func, diffusion_func, y0, xinp, param, tpts, key=subkey[3])
+    assert jnp.allclose(res.value, true_value, atol=1e-6, rtol=1e-4)
+
+    # import matplotlib.pyplot as plt
+    # plt.figure(figsize=(10, 3))
+    # plt.subplot(1, 2, 1)
+    # plt.plot(tpts, true_value[..., 0], label="Sequential")
+    # plt.plot(tpts, res.value[..., 0], label="DEER")
+    # plt.legend()
+    # plt.title("Solving an SDE with Euler-Maruyama integral")
+    # plt.subplot(1, 2, 2)
+    # plt.plot(tpts, (true_value - res.value)[..., 0])
+    # plt.title("Difference between sequential and DEER")
+    # plt.tight_layout()
+    # plt.savefig("test.png")
+
+@pytest.mark.parametrize("method", [
+    solve_sde.EulerMaruyama(),
+    solve_sde.EulerMaruyamaDEER(),
+])
+def test_solve_sde_derivs(method):
+    key = jax.random.PRNGKey(0)
+
+    def drift_func(y: jnp.ndarray, x: jnp.ndarray, param: jnp.ndarray) -> jnp.ndarray:
+        # y: (ny,)
+        # x: (ny,)
+        # param: (ny, ny)
+        # returns: (ny,)
+        return -param @ (y ** 3 + x ** 2)
+
+    def diffusion_func(y: jnp.ndarray, x: jnp.ndarray, param: jnp.ndarray) -> jnp.ndarray:
+        # y: (ny,)
+        # x: (ny,)
+        # param: (ny, ny)
+        # returns: (ny,)
+        return (param @ y) ** 2
+
+    nsamples = 10
+    ny = 2
+    key, *subkey = jax.random.split(key, 5)
+    y0 = jax.random.normal(subkey[0], shape=(ny,))
+    param = jax.random.normal(subkey[1], shape=(ny, ny))
+    xinp = jax.random.normal(subkey[2], shape=(nsamples, ny))
+    tpts = jnp.linspace(0, 1.0, nsamples)
+    
+    def get_loss(y0, xinp, param, tpts):
+        yt = solve_sde(drift_func, diffusion_func, y0, xinp, param, tpts, method=method, key=subkey[3]).value
+        return yt
+    
+    jax.test_util.check_grads(
+        get_loss, (y0, xinp, param, tpts), order=1, modes=['rev', 'fwd'],
+        # atol, rtol, eps following torch.autograd.gradcheck
+        atol=1e-5, rtol=1e-3, eps=1e-6)
 
 def test_rnn_derivs():
     # test the rnn with the DEER framework using simple RNN function
