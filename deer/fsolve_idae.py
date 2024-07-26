@@ -45,7 +45,8 @@ def solve_idae(func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray]
     params: Any
         The parameters of the function ``func``.
     tpts: jnp.ndarray
-        The time points to evaluate the solution ``(nsamples,)``.
+        The time points to evaluate the solution ``(nsamples,)``. Must be monotonically increasing. Duplicate values
+        will cause nans.
     method: Optional[SolveIDAEMethod]
         The method to solve the implicit DAE. If None, then use the ``BwdEulerDEER()`` method.
 
