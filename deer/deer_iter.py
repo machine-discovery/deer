@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from deer.utils import Result, while_loop_scan
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11, 12))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11, 12, 13))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -16,6 +16,7 @@ def deer_iteration(
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable as 0
+        convergence_func: Optional[Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray]] = None,
         max_iter: int = 100,
         clip_ytnext: bool = False,
         atol: Optional[float] = None,
@@ -56,6 +57,9 @@ def deer_iteration(
     yinit_guess: jnp.ndarray or None
         The initial guess of the output signal (nsamples, ny).
         If None, it will be initialized as 0s.
+    convergence_func: Optional[Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray]]
+        The function to check the convergence of the iteration. This takes the same arguments as ``func``.
+        If None, it will use the default convergence check.
     max_iter: int
         The maximum number of iterations to perform.
     clip_ytnext: bool
@@ -75,6 +79,7 @@ def deer_iteration(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
+        convergence_func=convergence_func,
         p_num=p_num,
         params=params,
         xinput=xinput,
@@ -97,6 +102,7 @@ def deer_iteration_full(
         inv_lin_params: Any,  # gradable
         shifter_func_params: Any,  # gradable
         yinit_guess: jnp.ndarray,  # gradable as 0
+        convergence_func: Optional[Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray]] = None,
         max_iter: int = 100,
         clip_ytnext: bool = False,
         atol: Optional[float] = None,
@@ -109,6 +115,7 @@ def deer_iteration_full(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
+        convergence_func=convergence_func,
         p_num=p_num,
         params=params,
         xinput=xinput,
@@ -126,6 +133,7 @@ def deer_iteration_helper(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
+        convergence_func: Optional[Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray]],
         p_num: int,
         params: Any,  # gradable
         xinput: Any,  # gradable
@@ -187,13 +195,52 @@ def deer_iteration_helper(
         # return all the intermediate values during the iterations as well
         (err, tol, yt, gts, iiter), (erriter, toliter, ytiter, _, _) = while_loop_scan(
             cond_func, iter_func, (err, tol, yinit_guess, gts, iiter), max_iter=max_iter)
-        is_converged_iter = jnp.all(erriter <= toliter, axis=(-1, -2), keepdims=True)  # (max_iter, 1, 1)
+        # (max_iter, 1, 1)
+        is_converged_iter = jnp.all(erriter <= toliter, axis=(-1, -2), keepdims=True)
+        if convergence_func is not None:
+            def recalculate_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged_iter):
+                # recalculate the convergence using the convergence function
+                # yt: (max_iter, nsamples, ny)
+                # xinput: (nsamples, *nx)
+                # ytparams: [p] + (max_iter, nsamples, ny)
+                ytparams = jax.vmap(shifter_func, in_axes=(0, None))(ytiter, shifter_func_params)
+                cf = convergence_func
+                cf = jax.vmap(cf, in_axes=(0, 0, None))  # broadcast to nsamples
+                cf = jax.vmap(cf, in_axes=(0, None, None))  # broadcast to max_iter
+                convergence_err = cf(ytparams, xinput, params)
+                return convergence_err <= tol
+
+            def broadcast_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged_iter):
+                # just broadcast is_converged to the shape of tol
+                return jnp.broadcast_to(is_converged_iter, tol.shape)
+
+            conv_params = (jax.tree_util.Partial(convergence_func), ytiter, shifter_func_params, xinput, params,
+                           toliter, is_converged_iter)
+            is_converged_iter = jax.lax.cond(is_converged_iter[-1, 0, 0], broadcast_func, recalculate_func,
+                                             *conv_params)
+
         return ytiter, is_converged_iter, gts, func
     else:
         # not using while_loop_scan here to keep it fast when vmapped
+        # err, tol: (nsamples, ny)
+        # yt: (nsamples, ny)
         err, tol, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, tol, yinit_guess, gts, iiter))
         # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
         is_converged = jnp.all(err <= tol)
+        if convergence_func is not None:
+            def recalculate_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged):
+                # recalculate the convergence using the convergence function
+                ytparams = shifter_func(yt, shifter_func_params)  # (nsamples, ny)
+                convergence_err = jax.vmap(convergence_func, in_axes=(0, 0, None))(ytparams, xinput, params)
+                return convergence_err <= tol
+
+            def broadcast_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged):
+                # just broadcast is_converged to the shape of tol
+                return jnp.broadcast_to(is_converged, tol.shape)
+
+            conv_params = (jax.tree_util.Partial(convergence_func), yt, shifter_func_params, xinput, params,
+                           tol, is_converged)
+            is_converged = jax.lax.cond(is_converged, broadcast_func, recalculate_func, *conv_params)
         return yt, is_converged, gts, func
 
 @deer_iteration.defjvp
@@ -203,6 +250,7 @@ def deer_iteration_jvp(
         func: Callable[[jnp.ndarray, jnp.ndarray, Any], jnp.ndarray],
         shifter_func: Callable[[jnp.ndarray, Any], List[jnp.ndarray]],
         p_num: int,
+        convergence_func: Optional[Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray]],
         max_iter: int,
         clip_ytnext: bool,
         atol: Optional[float],
@@ -218,6 +266,7 @@ def deer_iteration_jvp(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
+        convergence_func=convergence_func,
         p_num=p_num,
         params=params,
         xinput=xinput,

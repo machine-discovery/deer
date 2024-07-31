@@ -212,6 +212,7 @@ class BwdEulerDEER(SolveIDAEMethod):
             "inv_lin": self.solve_idae_inv_lin,
             "func": func2,
             "shifter_func": linfunc,
+            "convergence_func": func2,
             "p_num": 2,
             "params": params,
             "xinput": (dt, xinp),
@@ -224,6 +225,12 @@ class BwdEulerDEER(SolveIDAEMethod):
             "rtol": self.rtol,
         }
         result = deer_iteration_full(**kwargs) if self.return_full else deer_iteration(**kwargs)
+        # result.success can be non-continuous, so we should make it continuous only from the beginning
+        # For example, success = [True, True, False, False, True] does not make sense, so the preferrable one is
+        # success = [True, True, False, False, False]
+        # result.success: (max_iter, nsamples, nch) or (nsamples, nch)
+        success = jnp.cumprod(result.success, axis=-2, dtype=result.success.dtype)
+        result = Result(result.value, success)
         return result
 
     def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,

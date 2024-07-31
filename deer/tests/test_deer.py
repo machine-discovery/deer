@@ -203,6 +203,32 @@ def test_solve_idae_derivs(method):
         # atol, rtol, eps following torch.autograd.gradcheck
         atol=1e-5, rtol=1e-3, eps=1e-6)
 
+def test_solve_idae_partial_completion():
+    def dummy_func(ydot: jnp.ndarray, y: jnp.ndarray, x: jnp.ndarray, params) -> jnp.ndarray:
+        # a dynamic that would have no root for certain values of x
+        return ydot * ydot + y * y + (x - 2)
+
+    dtype = jnp.float64
+    y0 = jnp.zeros((1,), dtype=dtype) + 0.1
+    tpts = jnp.linspace(0, 4, 1000, dtype=dtype)
+    res = solve_idae(dummy_func, y0, tpts[..., None], None, tpts, method=solve_idae.BwdEulerDEER())
+
+    assert not jnp.all(res.success)  # expecting some kind of failure
+
+    # make sure the success flag is cumprod
+    success = jnp.cumprod(res.success, axis=-2, dtype=res.success.dtype)
+    assert jnp.all(success == res.success)
+
+    # the successful points should be close to the solution
+    mask = res.success[..., 0]  # (num_tpts_success,)
+    yval = res.value[mask, :]  # (num_tpts_success, 1)
+    tmask = tpts[mask]  # (num_tpts_success,)
+    ydot = (yval[1:] - yval[:-1]) / (tmask[1:] - tmask[:-1])[..., None]  # (num_tpts_success - 1, 1)
+    yval = yval[1:]  # (num_tpts_success - 1, 1)
+    xval = tmask[1:, None]  # (num_tpts_success - 1, 1)
+    resid = dummy_func(ydot, yval, xval, None)
+    assert jnp.all(resid < 1e-6)
+
 @pytest.mark.parametrize("method", [
     root.Newton(atol=1e-8, rtol=1e-4),
     root.Newton(atol=1e-8, rtol=1e-4, max_iter=20, return_full=True),
