@@ -65,6 +65,7 @@ class Newton(RootMethod):
     return_full: bool
         If True, return the full iterations of the root-finding process. Returned shape will be ``(max_iter, *ny)``.
         If False, return only the last iteration. Returned shape will be the same as ``y0.shape: (*ny,)``.
+        WARNINGS: If True and used in vmapped environment, this will be slow.
     """
     def __init__(self, max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3,
                  return_full: bool = False):
@@ -93,7 +94,7 @@ def newton_iter(func: Callable[[jnp.ndarray, Any], jnp.ndarray], y0: jnp.ndarray
                 max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3) -> Result:
     # y0: (*ny,), returns y: (*ny,) and is_converged: (*ny,) bool
     # the gradient is obtained by using the implicit function theorem
-    (y, is_converged), _, _ = newton_iter_helper(
+    y, is_converged, _ = newton_iter_helper(
         func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol)
     return Result(y, is_converged)
 
@@ -101,8 +102,8 @@ def newton_iter_full(func: Callable[[jnp.ndarray, Any], jnp.ndarray], y0: jnp.nd
                 max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3) -> Result:
     # y0: (*ny,), returns yiter: (max_iter, *ny) and is_converged_iter: (max_iter, *ny)
     # the gradient is obtained by propagating through the iterations
-    _, (yiter, is_converged_iter), _ = newton_iter_helper(
-        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol)
+    yiter, is_converged_iter, _ = newton_iter_helper(
+        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol, return_full=True)
     return Result(yiter, is_converged_iter)
 
 def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
@@ -110,7 +111,9 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
                        params: Any,  # gradable
                        max_iter: int = 100,
                        atol: float = 1e-6,
-                       rtol: float = 1e-3):
+                       rtol: float = 1e-3,
+                       return_full: bool = False,
+                       ):
 
     def iter_func(carry):
         y, err, tol, iiter, _ = carry
@@ -134,20 +137,24 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
         return ynext, err, tol, iiter + 1, jac
 
     def cond_func(carry):
-        _, err, tol, _, _ = carry
-        return jnp.any(err > tol)
+        _, err, tol, iiter, _ = carry
+        return jnp.logical_and(jnp.any(err > tol), iiter < max_iter)
 
     err = jnp.full_like(y0, jnp.inf)
     tol = jnp.zeros_like(y0)
     iiter = jnp.array(0, dtype=jnp.int32)
     jac0 = jnp.zeros((y0.size, y0.size))
     # yiter: (max_iter, *ny), erriter: (max_iter, *ny), toliter: (max_iter, *ny)
-    (y, err, tol, iiter, jac), (yiter, erriter, toliter, _, _) = while_loop_scan(
-        cond_func, iter_func, (y0, err, tol, iiter, jac0), max_iter=max_iter, unroll=1)
-    is_converged = jnp.all(err <= tol)  # ()
-    # (max_iter, *1)
-    is_converged_iter = jnp.all(erriter <= toliter, axis=tuple(range(1, erriter.ndim)), keepdims=True)
-    return (y, is_converged), (yiter, is_converged_iter), jac
+    if return_full:
+        (y, err, tol, iiter, jac), (yiter, erriter, toliter, _, _) = while_loop_scan(
+            cond_func, iter_func, (y0, err, tol, iiter, jac0), max_iter=max_iter, unroll=1)
+        # (max_iter, *1)
+        is_converged_iter = jnp.all(erriter <= toliter, axis=tuple(range(1, erriter.ndim)), keepdims=True)
+        return yiter, is_converged_iter, jac
+    else:
+        y, err, tol, iiter, jac = jax.lax.while_loop(cond_func, iter_func, (y0, err, tol, iiter, jac0))
+        is_converged = jnp.all(err <= tol)  # ()
+        return y, is_converged, jac
 
 @newton_iter.defjvp
 def newton_iter_jvp(
@@ -162,7 +169,7 @@ def newton_iter_jvp(
     _, grad_params = tangents
 
     # compute the iterations
-    (yt, is_converged), _, jac = newton_iter_helper(
+    yt, is_converged, jac = newton_iter_helper(
         func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol)
     
     # compute grad of f

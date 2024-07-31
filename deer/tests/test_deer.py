@@ -2,6 +2,7 @@ from typing import Any, Tuple, Callable
 import pytest
 import itertools
 import functools
+import timeit
 import jax
 import jax.test_util
 import jax.numpy as jnp
@@ -254,18 +255,6 @@ def test_root(method):
                            seq1d.Sequential()]))
 def test_rnn(jit: bool, difficult: bool, method):
     # test the rnn with the DEER framework using GRU
-    def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
-        # hprev: (nh,)
-        # xinp: (nx,)
-        # params: Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn
-        # returns: (nh,)
-        Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn = params
-        r = jax.nn.sigmoid(Wir @ xinp + Whr @ hprev + bhr)  # (nh,)
-        z = jax.nn.sigmoid(Wiz @ xinp + Whz @ hprev + bhz)  # (nh,)
-        n = jnp.tanh(Win @ xinp + r * (Whn @ hprev + bhn))  # (nh,)
-        h = (1 - z) * n + z * hprev
-        return h
-
     # generate random parameters
     dtype = jnp.float32 if difficult else jnp.float64
     key = jax.random.PRNGKey(0)
@@ -322,6 +311,55 @@ def test_rnn(jit: bool, difficult: bool, method):
 
     # check the outputs
     assert jnp.allclose(hseq, hfor, atol=1e-6)
+
+@pytest.mark.parametrize(
+        "jit, method",
+        itertools.product([True],
+                          # excessive max_iter, so it will be slow if using jax.lax.cond in vmapped environment
+                          [seq1d.DEER(max_iter=10000)]))
+def test_rnn_vmap(jit: bool, method):
+    # test if the DEER is still fast even in vmapped environment
+    # generate random parameters
+    dtype = jnp.float64
+    key = jax.random.PRNGKey(0)
+    nh, nx = (2, 2)
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    batch_size = 10
+    m = 1
+    Wir = (jax.random.uniform(subkey1, (batch_size, nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whr = (jax.random.uniform(subkey2, (batch_size, nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
+    bhr = (jax.random.uniform(subkey3, (batch_size, nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    Wiz = (jax.random.uniform(subkey1, (batch_size, nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whz = (jax.random.uniform(subkey2, (batch_size, nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
+    bhz = (jax.random.uniform(subkey3, (batch_size, nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    Win = (jax.random.uniform(subkey1, (batch_size, nh, nx), dtype=dtype) * 2 - 1) / nx ** 0.5 * m
+    Whn = (jax.random.uniform(subkey2, (batch_size, nh, nh), dtype=dtype) * 2 - 1) / nh ** 0.5 * m
+    bhn = (jax.random.uniform(subkey3, (batch_size, nh,), dtype=dtype) * 2 - 1) / nh ** 0.5
+    params = (Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn)
+
+    # generate random inputs and the initial condition
+    nsteps = 100
+    subkey1, subkey2, subkey3, key = jax.random.split(key, 4)
+    xinp = jax.random.normal(subkey1, shape=(batch_size, nsteps, nx), dtype=dtype) / m
+    h0 = jax.random.normal(subkey2, shape=(batch_size, nh), dtype=dtype)
+
+    # calculate the output states using seq1d
+    def func0(h0, xinp, params):
+        return jax.vmap(seq1d, in_axes=(None, 0, 0, 0, None))(gru_func, h0, xinp, params, method)
+
+    if jit:
+        func = jax.jit(func0)
+    else:
+        func = func0
+
+    # warmup
+    _ = func(h0, xinp, params)  # (nsteps, nh)
+
+    # get the time
+    time_spent = timeit.timeit(lambda: func(h0, xinp, params), number=10)  # (nsteps, nh)
+    assert time_spent < 5.0  # 5 seconds
 
 def eulermaruyama(ffunc: Callable, gfunc: Callable, y0: jnp.ndarray, xinp: jnp.ndarray, params: Any,
                   tpts: jnp.ndarray, *, key: jax.random.PRNGKey) -> jnp.ndarray:
@@ -541,6 +579,18 @@ def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) ->
     # f4 = x * u + y * v  # index-2
     f4 = x ** 2 + y ** 2 - 1  # index-3
     return jnp.concatenate([f0, f1, f2, f3, f4])
+
+def gru_func(hprev: jnp.ndarray, xinp: jnp.ndarray, params: Any) -> jnp.ndarray:
+    # hprev: (nh,)
+    # xinp: (nx,)
+    # params: Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn
+    # returns: (nh,)
+    Wir, Whr, bhr, Wiz, Whz, bhz, Win, Whn, bhn = params
+    r = jax.nn.sigmoid(Wir @ xinp + Whr @ hprev + bhr)  # (nh,)
+    z = jax.nn.sigmoid(Wiz @ xinp + Whz @ hprev + bhz)  # (nh,)
+    n = jnp.tanh(Win @ xinp + r * (Whn @ hprev + bhn))  # (nh,)
+    h = (1 - z) * n + z * hprev
+    return h
 
 if __name__ == "__main__":
     test_solve_idae()

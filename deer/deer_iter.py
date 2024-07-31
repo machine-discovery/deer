@@ -71,9 +71,7 @@ def deer_iteration(
         A ``Result`` object where ``.value`` is the output signal as the solution of the non-linear differential
         equations ``(nsamples, ny)`` and ``.success`` is the boolean array of the success status of the iterations.
     """
-    # TODO: handle the batch size in the implementation, because vmapped lax.cond is converted to lax.select
-    # which is less efficient than lax.cond
-    (yt, is_converged), _, _, _ = deer_iteration_helper(
+    yt, is_converged, _, _ = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
@@ -107,7 +105,7 @@ def deer_iteration_full(
     # this is like deer_iteration, but it also returns the intermediate results during the iterations
     # it can be used, for example, if one wants to optimize the process itself.
     # yt: (max_iter, nsamples, ny) and is_converged: (max_iter, 1, 1)
-    _, (ytiter, is_converged_iter), _, _ = deer_iteration_helper(
+    ytiter, is_converged_iter, _, _ = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,
@@ -119,6 +117,7 @@ def deer_iteration_full(
         yinit_guess=yinit_guess,
         max_iter=max_iter,
         clip_ytnext=clip_ytnext,
+        return_full=True,
         atol=atol,
         rtol=rtol)
     return Result(ytiter, success=is_converged_iter)
@@ -137,6 +136,7 @@ def deer_iteration_helper(
         clip_ytnext: bool = False,
         atol: Optional[float] = None,
         rtol: Optional[float] = None,
+        return_full: bool = False,
         ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
@@ -176,19 +176,25 @@ def deer_iteration_helper(
 
     def cond_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) -> bool:
         err, tol, _, _, iiter = iter_inp
-        return jnp.any(err > tol)
+        return jnp.logical_and(jnp.any(err > tol), iiter < max_iter)
 
     tol = jnp.zeros_like(yinit_guess, dtype=dtype)
     err = tol + 1e10  # initial error should be very high
     gt = jnp.zeros((yinit_guess.shape[0], yinit_guess.shape[-1], yinit_guess.shape[-1]), dtype=dtype)
     gts = [gt] * p_num
     iiter = jnp.array(0, dtype=jnp.int32)
-    (err, tol, yt, gts, iiter), (erriter, toliter, ytiter, _, _) = while_loop_scan(
-        cond_func, iter_func, (err, tol, yinit_guess, gts, iiter), max_iter=max_iter)
-    # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
-    is_converged = jnp.all(err <= tol)
-    is_converged_iter = jnp.all(erriter <= toliter, axis=(-1, -2), keepdims=True)  # (max_iter, 1, 1)
-    return (yt, is_converged), (ytiter, is_converged_iter), gts, func
+    if return_full:
+        # return all the intermediate values during the iterations as well
+        (err, tol, yt, gts, iiter), (erriter, toliter, ytiter, _, _) = while_loop_scan(
+            cond_func, iter_func, (err, tol, yinit_guess, gts, iiter), max_iter=max_iter)
+        is_converged_iter = jnp.all(erriter <= toliter, axis=(-1, -2), keepdims=True)  # (max_iter, 1, 1)
+        return ytiter, is_converged_iter, gts, func
+    else:
+        # not using while_loop_scan here to keep it fast when vmapped
+        err, tol, yt, gts, iiter = jax.lax.while_loop(cond_func, iter_func, (err, tol, yinit_guess, gts, iiter))
+        # (err, yt, gts, iiter), _ = jax.lax.scan(scan_func, (err, yinit_guess, gts, iiter), None, length=max_iter)
+        is_converged = jnp.all(err <= tol)
+        return yt, is_converged, gts, func
 
 @deer_iteration.defjvp
 def deer_iteration_jvp(
@@ -208,7 +214,7 @@ def deer_iteration_jvp(
 
     # compute the iteration
     # yt: (nsamples, ny)
-    (yt, is_converged), _, gts, func = deer_iteration_helper(
+    yt, is_converged, gts, func = deer_iteration_helper(
         inv_lin=inv_lin,
         func=func,
         shifter_func=shifter_func,

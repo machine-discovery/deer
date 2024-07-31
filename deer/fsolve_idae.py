@@ -168,6 +168,7 @@ class BwdEulerDEER(SolveIDAEMethod):
     return_full: bool
         If True, return the full result of the DEER iteration. Otherwise, return the
         final result only.
+        WARNINGS: If True and used in vmapped environment, this will be slow.
     """
     def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200, atol: Optional[float] = None,
                  rtol: Optional[float] = None, return_full: bool = False):
