@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Any, Callable, List, Optional
+from functools import partial
 import jax
 import jax.numpy as jnp
 import optimistix as optx
@@ -104,9 +105,7 @@ class BwdEuler(SolveIDAEMethod):
         # tpts: (nsamples,) the time points
         # returns: (nsamples, ny), including the initial states
         return_full = self.num_iter_returned > 0
-        def fn(yi, args):
-            yim1, xi, dti, params = args
-            return func((yi - yim1) / dti, yi, xi, params)
+        fn = partial(self.nonlin_func, func)
 
         def scan_fn(carry, x):
             _, success = carry
@@ -150,6 +149,11 @@ class BwdEuler(SolveIDAEMethod):
             success = jnp.moveaxis(success, 0, 1)  # (num_iter, nsamples, ny)
         return Result(y, success)
 
+    @classmethod
+    def nonlin_func(cls, func, yi, args):
+        yim1, xi, dti, params = args
+        return func((yi - yim1) / dti, yi, xi, params)
+
 class BwdEulerDEER(SolveIDAEMethod):
     """
     Solve the implicit DAE method using DEER method for backward Euler's method.
@@ -191,28 +195,16 @@ class BwdEulerDEER(SolveIDAEMethod):
         if yinit_guess is None:
             yinit_guess = jnp.zeros((tpts.shape[0], y0.shape[-1]), dtype=tpts.dtype) + y0
 
-        def func2(yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
-            # yshifts: [2] + (ny,)
-            # x is dt
-            y, ym1 = yshifts
-            dt, xinp = x
-            return func((y - ym1) / dt, y, xinp, params)
-
-        def linfunc(y: jnp.ndarray, lin_params: Any) -> List[jnp.ndarray]:
-            # y: (nsamples, ny)
-            # we're using backward euler's method, so we need to shift the values by one
-            ym1 = jnp.concatenate((y[:1], y[:-1]), axis=0)  # (nsamples, ny)
-            return [y, ym1]
-
         # dt[i] = t[i] - t[i - 1]
         dt_partial = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         dt = jnp.concatenate((dt_partial[:1], dt_partial), axis=0)  # (nsamples,)
 
+        fn = partial(self.nonlin_func, func)
         kwargs = {
             "inv_lin": self.solve_idae_inv_lin,
-            "func": func2,
-            "shifter_func": linfunc,
-            "convergence_func": func2,
+            "func": fn,
+            "shifter_func": self.shifter_func,
+            "convergence_func": fn,
             "p_num": 2,
             "params": params,
             "xinput": (dt, xinp),
@@ -233,7 +225,15 @@ class BwdEulerDEER(SolveIDAEMethod):
         result = Result(result.value, success)
         return result
 
-    def solve_idae_inv_lin(self, jacs: List[jnp.ndarray], z: jnp.ndarray,
+    @classmethod
+    def shifter_func(cls, y: jnp.ndarray, shifter_params: Any) -> List[jnp.ndarray]:
+        # y: (nsamples, ny)
+        # we're using backward euler's method, so we need to shift the values by one
+        ym1 = jnp.concatenate((y[:1], y[:-1]), axis=0)  # (nsamples, ny)
+        return [y, ym1]
+
+    @classmethod
+    def solve_idae_inv_lin(cls, jacs: List[jnp.ndarray], z: jnp.ndarray,
                            inv_lin_params: Any) -> jnp.ndarray:
         # solving the equation: M0_i @ y_i + M1_i @ y_{i-1} = z_i
         # M: (nsamples, ny, ny)
@@ -249,3 +249,12 @@ class BwdEulerDEER(SolveIDAEMethod):
         M0invz = jax.vmap(jnp.linalg.solve)(M01, z[1:])
         y = matmul_recursive(M0invM1, M0invz, y0)  # (nsamples, ny)
         return y
+
+    @classmethod
+    def nonlin_func(cls, func, yshifts: List[jnp.ndarray], x: Any, params: Any) -> jnp.ndarray:
+        # yshifts: [2] + (ny,)
+        # x is dt
+        y, ym1 = yshifts
+        dt, xinp = x
+        return func((y - ym1) / dt, y, xinp, params)
+

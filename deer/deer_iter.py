@@ -208,7 +208,9 @@ def deer_iteration_helper(
                 cf = jax.vmap(cf, in_axes=(0, 0, None))  # broadcast to nsamples
                 cf = jax.vmap(cf, in_axes=(0, None, None))  # broadcast to max_iter
                 convergence_err = cf(ytparams, xinput, params)
-                return convergence_err <= tol
+                convergence = jnp.broadcast_to(
+                    jnp.all(convergence_err <= atol, axis=-1, keepdims=True), convergence_err.shape)
+                return convergence
 
             def broadcast_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged_iter):
                 # just broadcast is_converged to the shape of tol
@@ -232,7 +234,9 @@ def deer_iteration_helper(
                 # recalculate the convergence using the convergence function
                 ytparams = shifter_func(yt, shifter_func_params)  # (nsamples, ny)
                 convergence_err = jax.vmap(convergence_func, in_axes=(0, 0, None))(ytparams, xinput, params)
-                return convergence_err <= tol
+                convergence = jnp.broadcast_to(
+                    jnp.all(convergence_err <= atol, axis=-1, keepdims=True), convergence_err.shape)
+                return convergence
 
             def broadcast_func(convergence_func, yt, shifter_func_params, xinput, params, tol, is_converged):
                 # just broadcast is_converged to the shape of tol
