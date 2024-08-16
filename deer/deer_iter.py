@@ -245,6 +245,10 @@ def deer_iteration_helper(
             conv_params = (jax.tree_util.Partial(convergence_func), yt, shifter_func_params, xinput, params,
                            tol, is_converged)
             is_converged = jax.lax.cond(is_converged, broadcast_func, recalculate_func, *conv_params)
+        # masking out the non-converged gts to avoid gradient become nan
+        is_converged = jnp.broadcast_to(is_converged, yt.shape)  # (nsamples, ny)
+        is_converged_mask = jnp.broadcast_to(is_converged[..., None], gts[0].shape)  # (nsamples, ny, ny)
+        gts = [jnp.where(is_converged_mask, gt, jnp.eye(gt.shape[-1])) for gt in gts]
         return yt, is_converged, gts, func
 
 @deer_iteration.defjvp
