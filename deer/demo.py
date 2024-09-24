@@ -124,7 +124,7 @@ def main():
     print(f"DEER GRU speed up over sequential GRU: {seq_time / deer_time:.3f}x")
 
     # calculate the error
-    dev = jnp.abs(outputs1 - outputs2).max()
+    dev = jnp.abs(outputs1 - outputs2.value).max()
     maxout = outputs1.max()
     minout = outputs1.min()
     print(f"Maximum absolute deviation: {dev:.3e} where output range: {minout:3e} to {maxout:3e}")
