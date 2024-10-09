@@ -203,6 +203,9 @@ def deer_iteration_jvp(
     inv_lin2 = partial(inv_lin, gts)
     _, grad_yt = jax.jvp(inv_lin2, (rhs0, inv_lin_params), (grad_func, grad_inv_lin_params))
 
+    # Create the tangent for is_converged
+    is_converged_tangent = jnp.zeros_like(is_converged, dtype=jax.dtypes.float0)
+
     result = Result(yt, success=is_converged)
-    grad_result = Result(grad_yt)
+    grad_result = Result(grad_yt, success=is_converged_tangent)
     return result, grad_result
