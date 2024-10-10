@@ -21,10 +21,10 @@ setup(
     author_email='muhammad@machine-discovery.com',
     license='BSD-3',
     packages=find_packages(),
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=[
         "jaxlib>=0.4.28",
-        "jax>=0.4.28",
+        "jax>=0.4.34",
         "numpy>=1.24.0",
         "scipy>=1.10.1",
         "equinox>=0.10.6",
