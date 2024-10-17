@@ -3,9 +3,10 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from deer.utils import Result, while_loop_scan
+from deer.linesearch import LineSearch
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11, 12, 13))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 1, 2, 3, 9, 10, 11, 12, 13, 14, 15, 16))
 def deer_iteration(
         inv_lin: Callable[[List[jnp.ndarray], jnp.ndarray, Any], jnp.ndarray],
         func: Callable[[List[jnp.ndarray], Any, Any], jnp.ndarray],
@@ -21,6 +22,9 @@ def deer_iteration(
         clip_ytnext: bool = False,
         atol: Optional[float] = None,
         rtol: Optional[float] = None,
+        linesearch: Optional[LineSearch] = None,
+        lin_func: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None,  # optional, only needed for linesearch
+        max_dev: Optional[float] = None,
         ) -> jnp.ndarray:
     r"""
     Perform the iteration from the DEER framework on equations with the form
@@ -89,7 +93,11 @@ def deer_iteration(
         max_iter=max_iter,
         clip_ytnext=clip_ytnext,
         atol=atol,
-        rtol=rtol)
+        rtol=rtol,
+        linesearch=linesearch,
+        lin_func=lin_func,
+        max_dev=max_dev,
+    )
     return Result(yt, success=is_converged)
 
 def deer_iteration_full(
@@ -107,6 +115,9 @@ def deer_iteration_full(
         clip_ytnext: bool = False,
         atol: Optional[float] = None,
         rtol: Optional[float] = None,
+        linesearch: Optional[LineSearch] = None,
+        lin_func: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None,
+        max_dev: Optional[float] = None,
         ) -> jnp.ndarray:
     # this is like deer_iteration, but it also returns the intermediate results during the iterations
     # it can be used, for example, if one wants to optimize the process itself.
@@ -126,7 +137,11 @@ def deer_iteration_full(
         clip_ytnext=clip_ytnext,
         return_full=True,
         atol=atol,
-        rtol=rtol)
+        rtol=rtol,
+        linesearch=linesearch,
+        lin_func=lin_func,
+        max_dev=max_dev,
+    )
     return Result(ytiter, success=is_converged_iter)
 
 def deer_iteration_helper(
@@ -145,6 +160,9 @@ def deer_iteration_helper(
         atol: Optional[float] = None,
         rtol: Optional[float] = None,
         return_full: bool = False,
+        linesearch: Optional[LineSearch] = None,
+        lin_func: Optional[Callable[[jnp.ndarray], jnp.ndarray]] = None,
+        max_dev: Optional[float] = None,
         ) -> Tuple[jnp.ndarray, Optional[List[jnp.ndarray]], Callable]:
     # obtain the functions to compute the jacobians and the function
     jacfunc = jax.vmap(jax.jacfwd(func, argnums=0), in_axes=(0, 0, None))
@@ -155,6 +173,11 @@ def deer_iteration_helper(
     # tol = 1e-7 if dtype == jnp.float64 else 1e-4
     atol = (1e-6 if dtype == jnp.float64 else 1e-4) if atol is None else atol
     rtol = (1e-4 if dtype == jnp.float64 else 1e-3) if rtol is None else rtol
+
+    def resid_func(yt: jnp.ndarray, all_params):
+        xinput, shifter_func_params, params = all_params
+        ytshift = shifter_func(yt, shifter_func_params)
+        return lin_func(yt) - func2(ytshift, xinput, params)
 
     def iter_func(iter_inp: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]) \
             -> Tuple[jnp.ndarray, jnp.ndarray, List[jnp.ndarray], jnp.ndarray]:
@@ -168,6 +191,12 @@ def deer_iteration_helper(
         rhs += sum([jnp.einsum("...ij,...j->...i", gt, ytp) for gt, ytp in zip(gts, ytparams)])
         yt_next = inv_lin(gts, rhs, inv_lin_params)  # (nsamples, ny)
 
+        dev0 = yt_next - yt
+        dev = dev0
+        if max_dev is not None:
+            dev = jnp.clip(dev, min=-max_dev, max=max_dev)
+            yt_next = yt + dev
+
         # workaround for rnn
         if clip_ytnext:
             clip = 1e8
@@ -177,8 +206,11 @@ def deer_iteration_helper(
             # jax.debug.print("gteival: {gteival}", gteival=jnp.max(jnp.abs(jnp.real(jnp.linalg.eigvals(gts[0])))))
 
         # conditions for convergence checking
-        err = jnp.abs(yt_next - yt)  # (nsamples, ny)
+        err = jnp.abs(dev0)  # (nsamples, ny)
         tol = atol + rtol * jnp.abs(yt_next)
+
+        if linesearch is not None:
+            yt_next = linesearch.forward(yt, yt_next, resid_func, (xinput, shifter_func_params, params))
         # jax.debug.print("iiter: {iiter}, err: {err}", iiter=iiter, err=jnp.max(err))
         return err, tol, yt_next, gts, iiter + 1
 
@@ -263,6 +295,9 @@ def deer_iteration_jvp(
         clip_ytnext: bool,
         atol: Optional[float],
         rtol: Optional[float],
+        linesearch: Optional[LineSearch],
+        lin_func: Optional[Callable[[jnp.ndarray], jnp.ndarray]],
+        max_dev: Optional[float],
         # the meaningful arguments
         primals, tangents):
     params, xinput, inv_lin_params, shifter_func_params, yinit_guess = primals
@@ -284,7 +319,11 @@ def deer_iteration_jvp(
         max_iter=max_iter,
         clip_ytnext=clip_ytnext,
         atol=atol,
-        rtol=rtol)
+        rtol=rtol,
+        linesearch=linesearch,
+        lin_func=lin_func,
+        max_dev=max_dev,
+        )
 
     # func2: (nsamples, ny) + (nsamples, ny) + any -> (nsamples, ny)
     func2 = jax.vmap(func, in_axes=(0, 0, None))  # vmap for y & x

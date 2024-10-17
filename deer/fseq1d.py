@@ -4,7 +4,7 @@ from deer.utils import get_method_meta, check_method
 import jax
 import jax.numpy as jnp
 from deer.deer_iter import deer_iteration
-from deer.maths import matmul_recursive
+from deer.maths import matmul_recursive, associative_scan
 from deer.utils import Result
 
 

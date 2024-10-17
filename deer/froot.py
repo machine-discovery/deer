@@ -4,6 +4,7 @@ from abc import abstractmethod
 import jax
 import jax.numpy as jnp
 from deer.utils import get_method_meta, check_method, while_loop_scan, Result
+from deer.linesearch import LineSearch
 
 
 def root(func: Callable[[jnp.ndarray, Any], jnp.ndarray], y0: jnp.ndarray, params: Any,
@@ -66,13 +67,16 @@ class Newton(RootMethod):
         If True, return the full iterations of the root-finding process. Returned shape will be ``(max_iter, *ny)``.
         If False, return only the last iteration. Returned shape will be the same as ``y0.shape: (*ny,)``.
         WARNINGS: If True and used in vmapped environment, this will be slow.
+    linesearch: Optional[LineSearch]
+        The line search algorithm to be used. If None, then no line search is performed.
     """
     def __init__(self, max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3,
-                 return_full: bool = False):
+                 return_full: bool = False, linesearch: Optional[LineSearch] = None):
         self.max_iter = max_iter
         self.atol = atol
         self.rtol = rtol
         self.return_full = return_full
+        self.linesearch = linesearch
 
     @property
     def num_iter_returned(self) -> bool:
@@ -85,17 +89,20 @@ class Newton(RootMethod):
         # returns: y: (*ny,) and is_converged: (*ny,) bool if not self.return_full
         # else returns yiter: (max_iter, *ny) and is_converged_iter: (max_iter, *ny)
         if self.return_full:
-            return newton_iter_full(func, y0, params, max_iter=self.max_iter, atol=self.atol, rtol=self.rtol)
+            return newton_iter_full(func, y0, params, max_iter=self.max_iter, atol=self.atol, rtol=self.rtol,
+                                    linesearch=self.linesearch)
         else:
-            return newton_iter(func, y0, params, max_iter=self.max_iter, atol=self.atol, rtol=self.rtol)
+            return newton_iter(func, y0, params, max_iter=self.max_iter, atol=self.atol, rtol=self.rtol,
+                               linesearch=self.linesearch)
 
-@partial(jax.custom_jvp, nondiff_argnums=(0, 3, 4, 5))
+@partial(jax.custom_jvp, nondiff_argnums=(0, 3, 4, 5, 6))
 def newton_iter(func: Callable[[jnp.ndarray, Any], jnp.ndarray], y0: jnp.ndarray, params: Any,
-                max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3) -> Result:
+                max_iter: int = 100, atol: float = 1e-6, rtol: float = 1e-3,
+                linesearch: Optional[LineSearch] = None) -> Result:
     # y0: (*ny,), returns y: (*ny,) and is_converged: (*ny,) bool
     # the gradient is obtained by using the implicit function theorem
     y, is_converged, _ = newton_iter_helper(
-        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol)
+        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol, linesearch=linesearch)
     return Result(y, is_converged)
 
 def newton_iter_full(func: Callable[[jnp.ndarray, Any], jnp.ndarray], y0: jnp.ndarray, params: Any,
@@ -113,6 +120,7 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
                        atol: float = 1e-6,
                        rtol: float = 1e-3,
                        return_full: bool = False,
+                       linesearch: Optional[LineSearch] = None,
                        ):
 
     def iter_func(carry):
@@ -121,7 +129,7 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
         fy = func(y, params)
         jacinvfy = jnp.linalg.solve(jac, fy)
         # doing lstsq to handle singular matrix
-        jacinvfy = jax.lax.cond(jnp.all(jnp.isfinite(jacinvfy)), lambda : jacinvfy, lambda : jnp.linalg.lstsq(jac, fy)[0])
+        # jacinvfy = jax.lax.cond(jnp.all(jnp.isfinite(jacinvfy)), lambda : jacinvfy, lambda : jnp.linalg.lstsq(jac, fy)[0])
         ynext = y - jacinvfy
         # ynext = y - jnp.linalg.lstsq(jac, fy)[0]
 
@@ -129,8 +137,13 @@ def newton_iter_helper(func: Callable[[jnp.ndarray, Any], jnp.ndarray],
         clip = 1e8
         ynext = jnp.clip(ynext, min=-clip, max=clip)
         ynext = jnp.where(jnp.isnan(ynext), 0.0, ynext)
+        dy = ynext - y
 
-        err = jnp.abs(ynext - y)
+        # line search
+        if linesearch is not None:
+            ynext = linesearch.forward(y, ynext, func, params)
+
+        err = jnp.abs(dy)
         tol = atol + rtol * jnp.abs(ynext)
         # jax.debug.print("froot iiter: {iiter}, err: {err}, fy: {fy}", iiter=iiter, err=jnp.max(err),
         #                 fy=jnp.max(jnp.abs(func(ynext, params))))
@@ -163,6 +176,7 @@ def newton_iter_jvp(
         max_iter: int,
         atol: float,
         rtol: float,
+        linesearch: Optional[LineSearch],
         # meaningful arguments
         primals, tangents):
     y0, params = primals
@@ -170,7 +184,7 @@ def newton_iter_jvp(
 
     # compute the iterations
     yt, is_converged, jac = newton_iter_helper(
-        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol)
+        func, y0, params, max_iter=max_iter, atol=atol, rtol=rtol, linesearch=linesearch)
     
     # compute grad of f
     func_partial_y = partial(func, yt)

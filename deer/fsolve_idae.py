@@ -8,6 +8,7 @@ from deer.deer_iter import deer_iteration, deer_iteration_full
 from deer.maths import matmul_recursive
 from deer.utils import get_method_meta, check_method, Result
 from deer.froot import root, RootMethod
+from deer.linesearch import LineSearch
 
 
 __all__ = ["solve_idae"]
@@ -173,14 +174,23 @@ class BwdEulerDEER(SolveIDAEMethod):
         If True, return the full result of the DEER iteration. Otherwise, return the
         final result only.
         WARNINGS: If True and used in vmapped environment, this will be slow.
+    linesearch: Optional[LineSearch]
+        The line search algorithm to be used.
+    max_dev: Optional[float]
+        Maximum deviation in one DEER step
     """
     def __init__(self, yinit_guess: Optional[jnp.ndarray] = None, max_iter: int = 200, atol: Optional[float] = None,
-                 rtol: Optional[float] = None, return_full: bool = False):
+                 rtol: Optional[float] = None, return_full: bool = False, linesearch: Optional[LineSearch] = None,
+                 max_dev: Optional[float] = None,
+                 ):
         self.yinit_guess = yinit_guess
         self.max_iter = max_iter
         self.atol = atol
         self.rtol = rtol
         self.return_full = return_full
+        self.linesearch = linesearch
+        self.max_dev = max_dev
+        assert max_dev is None or max_dev > 0
 
     def compute(self, func: Callable[[jnp.ndarray, jnp.ndarray, Any, Any], jnp.ndarray],
                 y0: jnp.ndarray, xinp: Any, params: Any, tpts: jnp.ndarray) -> Result:
@@ -199,6 +209,9 @@ class BwdEulerDEER(SolveIDAEMethod):
         dt_partial = tpts[1:] - tpts[:-1]  # (nsamples - 1,)
         dt = jnp.concatenate((dt_partial[:1], dt_partial), axis=0)  # (nsamples,)
 
+        def lin_func(yt):
+            return jnp.zeros_like(yt)
+
         fn = partial(self.nonlin_func, func)
         kwargs = {
             "inv_lin": self.solve_idae_inv_lin,
@@ -215,6 +228,9 @@ class BwdEulerDEER(SolveIDAEMethod):
             "clip_ytnext": True,
             "atol": self.atol,
             "rtol": self.rtol,
+            "linesearch": self.linesearch,
+            "lin_func": lin_func,
+            "max_dev": self.max_dev,
         }
         result = deer_iteration_full(**kwargs) if self.return_full else deer_iteration(**kwargs)
         # result.success can be non-continuous, so we should make it continuous only from the beginning
