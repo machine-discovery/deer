@@ -31,7 +31,7 @@ def eval_gru(carry: jnp.ndarray, inputs: jnp.ndarray, gru_params, gru_static, me
             return gru(inputs, carry)
 
         seq1dm = jax.vmap(seq1d, in_axes=(None, 0, 1, None), out_axes=1)
-        outputs = seq1dm(call_gru2, carry, inputs, gru_params)
+        outputs = seq1dm(call_gru2, carry, inputs, gru_params).value
 
     else:
         raise ValueError(f"Unknown method: '{method}'. Must be 'sequential' or 'deer'.")
@@ -124,7 +124,7 @@ def main():
     print(f"DEER GRU speed up over sequential GRU: {seq_time / deer_time:.3f}x")
 
     # calculate the error
-    dev = jnp.abs(outputs1 - outputs2.value).max()
+    dev = jnp.abs(outputs1 - outputs2).max()
     maxout = outputs1.max()
     minout = outputs1.min()
     print(f"Maximum absolute deviation: {dev:.3e} where output range: {minout:3e} to {maxout:3e}")
