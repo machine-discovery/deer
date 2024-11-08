@@ -413,5 +413,38 @@ def dae_pendulum(vrdot: jnp.ndarray, vr: jnp.ndarray, t: jnp.ndarray, params) ->
     f4 = x ** 2 + y ** 2 - 1  # index-3
     return jnp.concatenate([f0, f1, f2, f3, f4])
 
+
+@pytest.mark.parametrize("method, atol", [
+    (solve_ivp.RK3(), 1e-6),
+    (solve_ivp.RK4(), 1e-6),
+    (solve_ivp.ForwardEuler(), 1e-2),  # Forward Euler has a larger error
+    (solve_ivp.BackwardEuler(), 1e-2),  # Backward Euler has a larger error
+    (solve_ivp.TrapezoidalMethod(), 1e-6)
+])
+def test_ODEs(method, atol: float):
+    def sample_func(y, x, params):
+        return -params * y * x
+
+    # Initialize parameters
+    y0 = jnp.array([1.0, 0.0, -1.0])
+    params = -2
+    tpts = jnp.linspace(0, 0.5, 1000)
+    xinp = jnp.sin(tpts * 2 * jnp.pi) + 1e-3
+
+    # Compute solution using the parameterized method
+    yt_method = solve_ivp(sample_func, y0, xinp, params, tpts, method=method)
+
+    # Compute reference solution using DEER method
+    yt_deer = solve_ivp(sample_func, y0, xinp, params, tpts, method=solve_ivp.DEER())
+
+    # Compare results
+    assert jnp.allclose(yt_deer.value, yt_method.value, atol=atol)
+
+    # Check the gradients
+    def solve_ivp_wrapper(y0):
+        return solve_ivp(sample_func, y0, xinp, params, tpts, method=method).value
+    
+    jax.test_util.check_grads(solve_ivp_wrapper, (y0,), order=1, modes=['fwd', 'rev'])
+
 if __name__ == "__main__":
     test_solve_idae()
