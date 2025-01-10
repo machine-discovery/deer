@@ -192,7 +192,6 @@ def newton_iter_jvp(
     _, grad_func = jax.jvp(func_partial_y, (params,), (grad_params,))
 
     grad_y = jnp.linalg.solve(jac, -grad_func)  # (ny,)
-    is_converged_tangent = jnp.zeros_like(is_converged, dtype=jax.dtypes.float0)
     result = Result(yt, is_converged)
-    grad_result = Result(grad_y, success=is_converged_tangent)
+    grad_result = Result(grad_y)
     return result, grad_result
