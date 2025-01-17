@@ -20,9 +20,6 @@ class Result:
             success = jnp.full_like(value, True, dtype=jnp.bool)
         elif isinstance(success, bool):
             success = jnp.full_like(value, success, dtype=jnp.bool)
-        elif hasattr(success, "dtype") and success.dtype == jax.dtypes.float0:
-            # The Bool outputs of `jax.custom_jvp` requires tangents with `float0` type since jax 0.4.34.
-            success = jnp.full_like(value, success, dtype=jax.dtypes.float0)
         elif isinstance(success, jnp.ndarray):
             assert success.dtype == jnp.bool
             success = jnp.broadcast_to(success, value.shape)
